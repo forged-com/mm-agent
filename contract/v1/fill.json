@@ -1,0 +1,16 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Mapped fill row",
+  "description": "One line of fills.mapped.jsonl.gz. id is the sha256 hex of the mapped order, ts, price, qty and side, so the same fill pulled in two windows carries the same id; order references an id in the same window's orders.mapped; prices and quantities are decimal strings; ts is UTC epoch milliseconds.",
+  "type": "object",
+  "required": ["id", "order", "ts", "price", "qty", "side"],
+  "additionalProperties": false,
+  "properties": {
+    "id": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "order": {"type": "string", "minLength": 1},
+    "ts": {"$ref": "order.json#/$defs/millis"},
+    "price": {"$ref": "order.json#/$defs/decimal"},
+    "qty": {"$ref": "order.json#/$defs/decimal"},
+    "side": {"$ref": "order.json#/$defs/side"}
+  }
+}

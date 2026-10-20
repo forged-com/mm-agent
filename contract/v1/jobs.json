@@ -1,0 +1,11 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "GET /jobs",
+  "description": "No request body. The response lists every outstanding window for the calling market maker.",
+  "type": "object",
+  "required": ["jobs"],
+  "additionalProperties": false,
+  "properties": {
+    "jobs": {"type": "array", "items": {"$ref": "job.json"}}
+  }
+}

@@ -1,0 +1,23 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Mapped order row",
+  "description": "One line of orders.mapped.jsonl.gz. Prices and quantities are decimal strings; timestamps are UTC epoch milliseconds; ended is null while the order is still open at window end; filled and remaining are null when the source does not provide them.",
+  "type": "object",
+  "required": ["id", "side", "price", "qty", "placed", "ended", "filled", "remaining"],
+  "additionalProperties": false,
+  "properties": {
+    "id": {"type": "string", "minLength": 1},
+    "side": {"$ref": "#/$defs/side"},
+    "price": {"$ref": "#/$defs/decimal"},
+    "qty": {"$ref": "#/$defs/decimal"},
+    "placed": {"$ref": "#/$defs/millis"},
+    "ended": {"oneOf": [{"$ref": "#/$defs/millis"}, {"type": "null"}]},
+    "filled": {"oneOf": [{"$ref": "#/$defs/decimal"}, {"type": "null"}]},
+    "remaining": {"oneOf": [{"$ref": "#/$defs/decimal"}, {"type": "null"}]}
+  },
+  "$defs": {
+    "side": {"type": "string", "enum": ["buy", "sell"]},
+    "decimal": {"type": "string", "pattern": "^[+-]?([0-9]+\\.?[0-9]*|\\.[0-9]+)([eE][+-]?[0-9]+)?$"},
+    "millis": {"type": "integer", "minimum": 0}
+  }
+}

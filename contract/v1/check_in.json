@@ -1,0 +1,14 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "POST /check_in",
+  "description": "Sent on every run before jobs are requested, even when nothing is outstanding. The response body is empty.",
+  "type": "object",
+  "required": ["version", "config_hash", "image_digest", "now"],
+  "additionalProperties": false,
+  "properties": {
+    "version": {"type": "string", "minLength": 1},
+    "config_hash": {"type": "string", "minLength": 1},
+    "image_digest": {"type": ["string", "null"]},
+    "now": {"type": "integer", "minimum": 0}
+  }
+}

@@ -1,0 +1,16 @@
+mm: alpha
+control:
+  url: https://mmcp.forgd.com
+source:
+  kind: files
+  dsn: /exports                 # directory mounted into the container; globs below are relative to it
+  timezone: UTC                 # zone of naive timestamps in the rows and of the {from}/{to} dates in the globs
+aliases:
+  venues: {binance: binance, okx: okx}
+  pairs: {ETH/USDT: ETH-USDT, BTC/USDT: BTC-USDT}
+orders:
+  query: orders/{venue}/{pair}/{from}.csv     # CSV or JSONL, .gz by extension; rows outside the window are dropped
+  map: {id: order_id, side: side, price: price, qty: qty, placed: placed_at, ended: closed_at}
+fills:
+  query: fills/{venue}/{pair}/{from}.csv
+  map: {order: order_id, ts: filled_at, price: price, qty: qty, side: side}

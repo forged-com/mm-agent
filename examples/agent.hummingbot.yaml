@@ -1,0 +1,35 @@
+mm: alpha
+control:
+  url: https://mmcp.forgd.com
+source:
+  kind: sqlite
+  dsn: sqlite:////data/hummingbot_trades.sqlite   # Hummingbot's trade database, mounted read-only
+aliases:
+  venues: {binance: binance}                      # Hummingbot connector name
+  pairs: {ETH/USDT: ETH-USDT}                     # Hummingbot trading pair
+orders:
+  query: |
+    select id, side, price, amount, creation_timestamp, ended
+    from (
+      select o.id,
+             case when exists (select 1 from OrderStatus s where s.order_id = o.id and s.status = 'BuyOrderCreated')
+                  then 'buy' else 'sell' end as side,
+             o.price / 1000000.0 as price,
+             o.amount / 1000000.0 as amount,
+             o.creation_timestamp,
+             case when o.last_status in ('BuyOrderCompleted', 'SellOrderCompleted', 'OrderCancelled', 'OrderExpired', 'OrderFailure')
+                  then o.last_update_timestamp end as ended
+      from "Order" o
+      where o.market = :venue and o.symbol = :pair
+    )
+    where creation_timestamp < strftime('%s', :to_utc) * 1000
+      and (ended is null or ended >= strftime('%s', :from_utc) * 1000)
+  map: {id: id, side: side, price: price, qty: amount, placed: creation_timestamp, ended: ended}
+fills:
+  query: |
+    select order_id, timestamp, price / 1000000.0 as price, amount / 1000000.0 as amount, trade_type
+    from TradeFill
+    where market = :venue and symbol = :pair
+      and timestamp >= strftime('%s', :from_utc) * 1000
+      and timestamp < strftime('%s', :to_utc) * 1000
+  map: {order: order_id, ts: timestamp, price: price, qty: amount, side: trade_type}

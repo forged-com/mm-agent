@@ -1,0 +1,25 @@
+mm: alpha
+control:
+  url: https://mmcp.forgd.com
+source:
+  kind: postgres
+  dsn: postgresql://readonly@oms-db/oms
+  timezone: UTC                 # zone of naive timestamps in the source; :from/:to are bound naive in it, :from_utc/:to_utc aware UTC
+aliases:                        # Forgd canonical on the left, your own strings on the right
+  venues: {binance: BINANCE_SPOT, okx: OKX}
+  pairs: {ETH/USDT: ETHUSDT, BTC/USDT: BTCUSDT}
+orders:
+  query: |
+    select order_id, side, price, orig_qty, created_at, closed_at, filled_qty, orig_qty - filled_qty as remaining_qty
+    from orders
+    where venue = :venue and symbol = :pair
+      and created_at < :to
+      and (closed_at is null or closed_at >= :from)
+  map: {id: order_id, side: side, price: price, qty: orig_qty, placed: created_at, ended: closed_at, filled: filled_qty, remaining: remaining_qty}
+fills:
+  query: |
+    select order_id, exec_time, px, qty, side
+    from fills
+    where venue = :venue and symbol = :pair
+      and exec_time >= :from and exec_time < :to
+  map: {order: order_id, ts: exec_time, price: px, qty: qty, side: side}

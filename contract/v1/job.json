@@ -1,0 +1,17 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Job",
+  "description": "One outstanding landing window. from/to are a half-open UTC window in epoch milliseconds; pair and venue are Forgd canonical strings.",
+  "type": "object",
+  "required": ["from", "to", "pair", "venue"],
+  "additionalProperties": false,
+  "properties": {
+    "from": {"$ref": "#/$defs/millis"},
+    "to": {"$ref": "#/$defs/millis"},
+    "pair": {"type": "string", "minLength": 1},
+    "venue": {"type": "string", "minLength": 1}
+  },
+  "$defs": {
+    "millis": {"type": "integer", "minimum": 0}
+  }
+}

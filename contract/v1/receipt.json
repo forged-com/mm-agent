@@ -1,0 +1,95 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "POST /receipt",
+  "description": "One receipt per job, then one per run. The payload is dispatched on kind. The response body is empty.",
+  "oneOf": [{"$ref": "#/$defs/job"}, {"$ref": "#/$defs/run"}],
+  "$defs": {
+    "millis": {"type": "integer", "minimum": 0},
+    "job": {
+      "type": "object",
+      "required": ["kind", "status", "asset", "window", "files", "query_ms", "warnings", "error"],
+      "additionalProperties": false,
+      "properties": {
+        "kind": {"const": "job"},
+        "status": {"type": "string", "enum": ["ok", "failed"]},
+        "asset": {
+          "type": "object",
+          "required": ["pair", "venue", "source_pair", "source_venue"],
+          "additionalProperties": false,
+          "properties": {
+            "pair": {"$ref": "job.json#/properties/pair"},
+            "venue": {"$ref": "job.json#/properties/venue"},
+            "source_pair": {"type": ["string", "null"]},
+            "source_venue": {"type": ["string", "null"]}
+          }
+        },
+        "window": {
+          "type": "object",
+          "required": ["from", "to"],
+          "additionalProperties": false,
+          "properties": {
+            "from": {"$ref": "job.json#/properties/from"},
+            "to": {"$ref": "job.json#/properties/to"}
+          }
+        },
+        "files": {
+          "type": "object",
+          "propertyNames": {"$ref": "upload_url.json#/$defs/request/properties/name"},
+          "additionalProperties": {"$ref": "#/$defs/file"}
+        },
+        "query_ms": {"$ref": "#/$defs/millis"},
+        "warnings": {"type": "array", "items": {"type": "string"}},
+        "error": {"type": ["string", "null"]}
+      },
+      "oneOf": [
+        {"properties": {"status": {"const": "ok"}, "error": {"type": "null"}}},
+        {"properties": {"status": {"const": "failed"}, "error": {"type": "string", "minLength": 1}}}
+      ]
+    },
+    "file": {
+      "type": "object",
+      "required": ["rows", "bytes", "sha256"],
+      "additionalProperties": false,
+      "properties": {
+        "rows": {"type": "integer", "minimum": 0},
+        "bytes": {"type": "integer", "minimum": 0},
+        "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"}
+      }
+    },
+    "run": {
+      "type": "object",
+      "required": ["kind", "version", "config_hash", "image_digest", "started", "ended", "jobs", "errors"],
+      "additionalProperties": false,
+      "properties": {
+        "kind": {"const": "run"},
+        "version": {"type": "string", "minLength": 1},
+        "config_hash": {"type": "string", "minLength": 1},
+        "image_digest": {"type": ["string", "null"]},
+        "started": {"$ref": "#/$defs/millis"},
+        "ended": {"$ref": "#/$defs/millis"},
+        "jobs": {
+          "type": "object",
+          "required": ["attempted", "succeeded", "failed"],
+          "additionalProperties": false,
+          "properties": {
+            "attempted": {"type": "integer", "minimum": 0},
+            "succeeded": {"type": "integer", "minimum": 0},
+            "failed": {"type": "integer", "minimum": 0}
+          }
+        },
+        "errors": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["job", "error"],
+            "additionalProperties": false,
+            "properties": {
+              "job": {"oneOf": [{"$ref": "job.json"}, {"type": "null"}]},
+              "error": {"type": "string", "minLength": 1}
+            }
+          }
+        }
+      }
+    }
+  }
+}

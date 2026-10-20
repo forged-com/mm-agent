@@ -1,0 +1,28 @@
+{
+  "window": {
+    "from": 1792879200000,
+    "to": 1792969200000
+  },
+  "files": {
+    "BTC/USDT@binance": {
+      "orders.mapped": {
+        "rows": 16,
+        "sha256": "03bedd78e2a9a8abb713f9c9637b8b48d50d11c1cd2456455f22c144c657b1ce"
+      },
+      "fills.mapped": {
+        "rows": 15,
+        "sha256": "6d996171a3a074bd36708d23ccca2b6ebef505ca2db620f52b1dd897f8ab2cb3"
+      }
+    },
+    "ETH/USDT@binance": {
+      "orders.mapped": {
+        "rows": 16,
+        "sha256": "999c68b311ac39019502f4e644e92cccfca49fa6471e6a28004a755edc6ed88d"
+      },
+      "fills.mapped": {
+        "rows": 15,
+        "sha256": "eac1695ea1a5994dd28a0a8d28b0e7f3d67ab7015ff843c1836e618d517f48ea"
+      }
+    }
+  }
+}

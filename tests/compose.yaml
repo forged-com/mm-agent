@@ -1,0 +1,56 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: golden
+      POSTGRES_PASSWORD: golden
+      POSTGRES_DB: golden
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "golden"]
+      interval: 2s
+      timeout: 2s
+      retries: 30
+  mysql:
+    image: mysql:8.4
+    environment:
+      MYSQL_ROOT_PASSWORD: golden
+      MYSQL_USER: golden
+      MYSQL_PASSWORD: golden
+      MYSQL_DATABASE: golden
+    ports:
+      - "3306:3306"
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-ugolden", "-pgolden"]
+      interval: 2s
+      timeout: 2s
+      retries: 60
+  clickhouse:
+    image: clickhouse/clickhouse-server:25.8
+    environment:
+      CLICKHOUSE_USER: golden
+      CLICKHOUSE_PASSWORD: golden
+      CLICKHOUSE_DB: golden
+    ports:
+      - "8123:8123"
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:8123/ping"]
+      interval: 2s
+      timeout: 2s
+      retries: 30
+  tests:
+    build:
+      context: ..
+      target: test
+    depends_on:
+      postgres:
+        condition: service_healthy
+      mysql:
+        condition: service_healthy
+      clickhouse:
+        condition: service_healthy
+    environment:
+      MM_AGENT_CONFORM_POSTGRES_DSN: postgresql://golden:golden@postgres:5432/golden
+      MM_AGENT_CONFORM_MYSQL_DSN: mysql+pymysql://golden:golden@mysql:3306/golden
+      MM_AGENT_CONFORM_CLICKHOUSE_DSN: clickhousedb://golden:golden@clickhouse:8123/golden

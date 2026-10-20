@@ -1,0 +1,26 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "POST /upload_url",
+  "description": "Request and response for one signed single-object PUT URL. The object path is chosen by the control plane.",
+  "$defs": {
+    "request": {
+      "type": "object",
+      "required": ["from", "to", "pair", "venue", "name"],
+      "additionalProperties": false,
+      "properties": {
+        "from": {"$ref": "job.json#/properties/from"},
+        "to": {"$ref": "job.json#/properties/to"},
+        "pair": {"$ref": "job.json#/properties/pair"},
+        "venue": {"$ref": "job.json#/properties/venue"},
+        "name": {"type": "string", "enum": ["orders.raw", "orders.mapped", "fills.raw", "fills.mapped"]}
+      }
+    },
+    "response": {
+      "type": "object",
+      "required": ["url"],
+      "properties": {
+        "url": {"type": "string", "format": "uri", "minLength": 1}
+      }
+    }
+  }
+}
