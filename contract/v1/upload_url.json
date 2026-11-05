@@ -5,13 +5,14 @@
   "$defs": {
     "request": {
       "type": "object",
-      "required": ["from", "to", "pair", "venue", "name"],
+      "required": ["from", "to", "asset", "venue", "quote", "name"],
       "additionalProperties": false,
       "properties": {
         "from": {"$ref": "job.json#/properties/from"},
         "to": {"$ref": "job.json#/properties/to"},
-        "pair": {"$ref": "job.json#/properties/pair"},
+        "asset": {"$ref": "job.json#/properties/asset"},
         "venue": {"$ref": "job.json#/properties/venue"},
+        "quote": {"$ref": "job.json#/properties/quote"},
         "name": {"type": "string", "enum": ["orders.raw", "orders.mapped", "fills.raw", "fills.mapped"]}
       }
     },

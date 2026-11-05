@@ -19,7 +19,7 @@ EXAMPLES = Path(__file__).parents[2] / "examples"
 def test_example_parses(name: str, kind: SourceKind) -> None:
     cfg, _ = load(EXAMPLES / name)
     assert cfg.source.kind is kind
-    assert cfg.aliases.pairs and cfg.aliases.venues
+    assert cfg.aliases.assets and cfg.aliases.pairs and cfg.aliases.venues
 
 
 def test_every_example_is_covered() -> None:

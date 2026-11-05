@@ -15,14 +15,15 @@ source:
   kind: sqlite
   dsn: sqlite:///oms.db
 aliases:
+  assets: {ETH: ETH}
   venues: {binance: BINANCE_SPOT}
   pairs: {ETH/USDT: ETHUSDT}
 orders:
   query: select * from orders
-  map: {id: order_id, side: side, price: price, qty: orig_qty, placed: created_at, ended: closed_at}
+  map: {id: order_id, venue: venue, pair: symbol, side: side, price: price, qty: orig_qty, placed: created_at, ended: closed_at}
 fills:
   query: select * from fills
-  map: {order: order_id, ts: exec_time, price: px, qty: qty, side: side}
+  map: {venue: venue, pair: symbol, order: order_id, ts: exec_time, price: px, qty: qty, side: side}
 """
 
 

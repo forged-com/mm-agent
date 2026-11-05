@@ -7,20 +7,22 @@
     "millis": {"type": "integer", "minimum": 0},
     "job": {
       "type": "object",
-      "required": ["kind", "status", "asset", "window", "files", "query_ms", "warnings", "error"],
+      "required": ["kind", "status", "target", "window", "files", "query_ms", "warnings", "error"],
       "additionalProperties": false,
       "properties": {
         "kind": {"const": "job"},
         "status": {"type": "string", "enum": ["ok", "failed"]},
-        "asset": {
+        "target": {
           "type": "object",
-          "required": ["pair", "venue", "source_pair", "source_venue"],
+          "required": ["asset", "venue", "quote", "source_asset", "source_venue", "source_pair"],
           "additionalProperties": false,
           "properties": {
-            "pair": {"$ref": "job.json#/properties/pair"},
+            "asset": {"$ref": "job.json#/properties/asset"},
             "venue": {"$ref": "job.json#/properties/venue"},
-            "source_pair": {"type": ["string", "null"]},
-            "source_venue": {"type": ["string", "null"]}
+            "quote": {"$ref": "job.json#/properties/quote"},
+            "source_asset": {"type": ["string", "null"]},
+            "source_venue": {"type": ["string", "null"]},
+            "source_pair": {"type": ["string", "null"]}
           }
         },
         "window": {

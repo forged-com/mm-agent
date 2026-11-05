@@ -82,8 +82,9 @@ def _dsn(kind: SourceKind, dsn: str) -> str:
 
 
 def _aliases(node: dict[str, Any]) -> Aliases:
-    only_keys(node, "aliases", {"venues", "pairs"})
+    only_keys(node, "aliases", {"assets", "venues", "pairs"})
     return Aliases(
+        assets=string_map(node.get("assets"), "aliases.assets"),
         venues=string_map(node.get("venues", {}), "aliases.venues"),
         pairs=string_map(node.get("pairs", {}), "aliases.pairs"),
     )

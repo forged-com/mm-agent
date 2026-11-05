@@ -4,13 +4,13 @@ from typing import Any
 from mm_agent.constants import RECEIPT_KIND_JOB, RECEIPT_KIND_RUN, STATUS_FAILED, STATUS_OK
 from mm_agent.control import job_wire
 from mm_agent.landing import Landed
-from mm_agent.types import Asset, Job
+from mm_agent.types import Job, Resolved
 
 
 @dataclass(frozen=True)
 class JobReceipt:
     job: Job
-    asset: Asset | None
+    resolved: Resolved | None
     files: tuple[Landed, ...]
     query_ms: int
     warnings: tuple[str, ...] = ()
@@ -20,11 +20,13 @@ class JobReceipt:
         return {
             "kind": RECEIPT_KIND_JOB,
             "status": STATUS_FAILED if self.error else STATUS_OK,
-            "asset": {
-                "pair": self.job.pair,
+            "target": {
+                "asset": self.job.asset,
                 "venue": self.job.venue,
-                "source_pair": self.asset.pair if self.asset else None,
-                "source_venue": self.asset.venue if self.asset else None,
+                "quote": self.job.quote,
+                "source_asset": self.resolved.asset if self.resolved else None,
+                "source_venue": self.resolved.venue if self.resolved else None,
+                "source_pair": self.resolved.pair if self.resolved else None,
             },
             "window": {"from": self.job.start, "to": self.job.end},
             "files": {f.name: {"rows": f.rows, "bytes": f.bytes, "sha256": f.sha256} for f in self.files},

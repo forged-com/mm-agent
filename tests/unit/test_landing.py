@@ -12,8 +12,10 @@ from mm_agent.landing import Landed, Writer, put
 from mm_agent.types import Fill, LandingError, Order
 from tests.conftest import StubControlPlane
 
-ORDER = Order(id="o1", side="buy", price="1.50", qty="2", placed=1_760_702_400_000, ended=None)
-FILL = Fill(order="o1", ts=1_760_702_400_500, price="1.50", qty="1", side="buy")
+ORDER = Order(
+    id="o1", venue="V", pair="P", side="buy", price="1.50", qty="2", placed=1_760_702_400_000, ended=None
+)
+FILL = Fill(venue="V", pair="P", order="o1", ts=1_760_702_400_500, price="1.50", qty="1", side="buy")
 
 
 def lines(path: Path) -> list[str]:
@@ -68,11 +70,11 @@ def test_gzip_bytes_reproducible_across_runs(tmp_path: Path) -> None:
 def test_mapped_dataclasses_serialise_in_schema_order(tmp_path: Path) -> None:
     landed = land(tmp_path, "orders.mapped", [ORDER])
     assert lines(landed.path) == [
-        '{"id":"o1","side":"buy","price":"1.50","qty":"2","placed":1760702400000,"ended":null,"filled":null,"remaining":null}'
+        '{"id":"o1","venue":"V","pair":"P","side":"buy","price":"1.50","qty":"2","placed":1760702400000,"ended":null,"filled":null,"remaining":null}'
     ]
     landed = land(tmp_path, "fills.mapped", [FILL])
     assert lines(landed.path) == [
-        f'{{"id":"{FILL.id}","order":"o1","ts":1760702400500,"price":"1.50","qty":"1","side":"buy"}}'
+        f'{{"id":"{FILL.id}","venue":"V","pair":"P","order":"o1","ts":1760702400500,"price":"1.50","qty":"1","side":"buy"}}'
     ]
 
 

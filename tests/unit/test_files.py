@@ -5,13 +5,13 @@ from pathlib import Path
 import pytest
 
 from mm_agent.drivers.files import files, pattern, rows
-from mm_agent.types import Asset, DriverError, Job, Source, SourceKind, Table
+from mm_agent.types import DriverError, Job, Resolved, Source, SourceKind, Table
 
 NOON = 1_792_238_400_000
 HOUR = 3_600_000
-JOB = Job(start=NOON, end=NOON + HOUR, pair="ETH/USDT", venue="binance")
-ASSET = Asset(pair="ETHUSDT", venue="BINANCE_SPOT")
-GLOB = "orders/{venue}/{pair}/{from}"
+JOB = Job(start=NOON, end=NOON + HOUR, asset="ETH")
+RESOLVED = Resolved(asset="ETH")
+GLOB = "orders/BINANCE_SPOT/{asset}USDT/{from}"
 ROWS = [
     {"order_id": "1", "side": "buy", "price": "10.5"},
     {"order_id": "2", "side": "sell", "price": "11"},
@@ -54,7 +54,7 @@ def root(tmp_path: Path) -> Path:
 
 
 def read(root: Path, glob: str, timezone: str = "UTC") -> list[dict[str, object]]:
-    return list(rows(source(root, timezone), table(glob), JOB, ASSET))
+    return list(rows(source(root, timezone), table(glob), JOB, RESOLVED))
 
 
 @pytest.mark.parametrize("suffix", [".csv", ".csv.gz"])
@@ -72,7 +72,7 @@ def test_rows_yields_plain_dicts(root: Path) -> None:
 
 
 def test_files_match_sorted_by_path(root: Path) -> None:
-    names = [path.name for path in files(source(root), table(GLOB + "*"), JOB, ASSET)]
+    names = [path.name for path in files(source(root), table(GLOB + "*"), JOB, RESOLVED)]
     assert names == ["2026-10-17.csv", "2026-10-17.csv.gz", "2026-10-17.jsonl", "2026-10-17.jsonl.gz"]
 
 
@@ -81,11 +81,11 @@ def test_rows_concatenate_matched_files_in_order(root: Path) -> None:
 
 
 def test_files_skip_directories(root: Path) -> None:
-    assert files(source(root), table("orders/{venue}/*"), JOB, ASSET) == []
+    assert files(source(root), table("orders/BINANCE_SPOT/*"), JOB, RESOLVED) == []
 
 
 def test_rows_with_no_match_is_empty(root: Path) -> None:
-    assert read(root, "orders/{venue}/{pair}/2000-01-01.csv") == []
+    assert read(root, "orders/BINANCE_SPOT/{asset}USDT/2000-01-01.csv") == []
 
 
 def test_rows_strip_utf8_bom(tmp_path: Path) -> None:
@@ -145,9 +145,7 @@ def test_root_must_be_a_directory(tmp_path: Path) -> None:
 
 
 def test_unknown_placeholder_rejected(root: Path) -> None:
-    with pytest.raises(
-        DriverError, match=r"unknown placeholder \{date\}; known are \['from', 'pair', 'to', 'venue'\]"
-    ):
+    with pytest.raises(DriverError, match=r"unknown placeholder \{date\}; known are \['asset', 'from', 'to'\]"):
         read(root, "orders/{date}.csv")
 
 
@@ -157,25 +155,34 @@ def test_malformed_placeholder_rejected(root: Path, glob: str) -> None:
         read(root, glob)
 
 
-def test_pattern_resolves_pair_venue_and_dates(root: Path) -> None:
-    assert pattern(source(root), table("{venue}/{pair}/{from}_{to}.csv"), JOB, ASSET) == (
-        "BINANCE_SPOT/ETHUSDT/2026-10-17_2026-10-17.csv"
+def test_pattern_resolves_asset_and_dates(root: Path) -> None:
+    resolved = Resolved(asset="XBT")
+    assert pattern(source(root), table("{asset}/{from}_{to}.csv"), JOB, resolved) == (
+        "XBT/2026-10-17_2026-10-17.csv"
     )
 
 
+@pytest.mark.parametrize("glob", ["{venue}/a.csv", "{pair}/a.csv"])
+def test_pattern_no_longer_knows_venue_or_pair(root: Path, glob: str) -> None:
+    with pytest.raises(DriverError, match="unknown placeholder"):
+        pattern(source(root), table(glob), JOB, RESOLVED)
+
+
 def test_pattern_dates_in_source_timezone(root: Path) -> None:
-    early = Job(start=NOON - 10 * HOUR, end=NOON - 9 * HOUR, pair=JOB.pair, venue=JOB.venue)
-    assert pattern(source(root, "America/New_York"), table("{from}_{to}"), early, ASSET) == "2026-10-16_2026-10-16"
-    assert pattern(source(root), table("{from}_{to}"), early, ASSET) == "2026-10-17_2026-10-17"
+    early = Job(start=NOON - 10 * HOUR, end=NOON - 9 * HOUR, asset=JOB.asset)
+    assert (
+        pattern(source(root, "America/New_York"), table("{from}_{to}"), early, RESOLVED) == "2026-10-16_2026-10-16"
+    )
+    assert pattern(source(root), table("{from}_{to}"), early, RESOLVED) == "2026-10-17_2026-10-17"
 
 
 def test_pattern_daily_window_ends_on_next_day(root: Path) -> None:
-    day = Job(start=NOON - 12 * HOUR, end=NOON + 12 * HOUR, pair=JOB.pair, venue=JOB.venue)
-    assert pattern(source(root), table("{from}_{to}"), day, ASSET) == "2026-10-17_2026-10-18"
+    day = Job(start=NOON - 12 * HOUR, end=NOON + 12 * HOUR, asset=JOB.asset)
+    assert pattern(source(root), table("{from}_{to}"), day, RESOLVED) == "2026-10-17_2026-10-18"
 
 
 def test_pattern_leaves_literal_glob_alone(root: Path) -> None:
-    assert pattern(source(root), table("orders/**/*.csv"), JOB, ASSET) == "orders/**/*.csv"
+    assert pattern(source(root), table("orders/**/*.csv"), JOB, RESOLVED) == "orders/**/*.csv"
 
 
 @pytest.mark.parametrize("text", ["", "order_id,side,price\n"])
@@ -185,7 +192,7 @@ def test_csv_without_rows_yields_nothing(tmp_path: Path, text: str) -> None:
 
 
 def test_pattern_hour_window_keeps_from_and_to_on_the_same_day(root: Path) -> None:
-    assert pattern(source(root), table("{from}_{to}"), JOB, ASSET) == "2026-10-17_2026-10-17"
+    assert pattern(source(root), table("{from}_{to}"), JOB, RESOLVED) == "2026-10-17_2026-10-17"
 
 
 def test_recursive_glob_crosses_venues(root: Path) -> None:

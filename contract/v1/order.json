@@ -1,12 +1,14 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "Mapped order row",
-  "description": "One line of orders.mapped.jsonl.gz. Prices and quantities are decimal strings; timestamps are UTC epoch milliseconds; ended is null while the order is still open at window end; filled and remaining are null when the source does not provide them.",
+  "description": "One line of orders.mapped.jsonl.gz. venue and pair are the market maker's own strings. Prices and quantities are decimal strings; timestamps are UTC epoch milliseconds; ended is null while the order is still open at window end; filled and remaining are null when the source does not provide them.",
   "type": "object",
-  "required": ["id", "side", "price", "qty", "placed", "ended", "filled", "remaining"],
+  "required": ["id", "venue", "pair", "side", "price", "qty", "placed", "ended", "filled", "remaining"],
   "additionalProperties": false,
   "properties": {
     "id": {"type": "string", "minLength": 1},
+    "venue": {"type": "string", "minLength": 1},
+    "pair": {"type": "string", "minLength": 1},
     "side": {"$ref": "#/$defs/side"},
     "price": {"$ref": "#/$defs/decimal"},
     "qty": {"$ref": "#/$defs/decimal"},

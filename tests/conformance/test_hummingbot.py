@@ -15,7 +15,7 @@ from tests.fixtures import golden, loaders
 
 EXAMPLE = Path(__file__).parents[2] / "examples" / "agent.hummingbot.yaml"
 EXAMPLE_DSN = "sqlite:////data/hummingbot_trades.sqlite"
-JOB = Job(golden.START, golden.END, "ETH/USDT", "binance")
+JOB = Job(golden.START, golden.END, "ETH")
 
 
 @pytest.fixture
@@ -35,7 +35,7 @@ def mapped(tmp_path: Path) -> dict[str, list[dict[str, Any]]]:
 
 
 def golden_rows(table: str) -> list[dict[str, Any]]:
-    return [row for row in getattr(golden, table)() if row["pair"] == JOB.pair and row["venue"] == JOB.venue]
+    return [row for row in getattr(golden, table)() if golden.asset_of(row) == JOB.asset]
 
 
 def order_key(row: dict[str, Any]) -> tuple[Any, ...]:
@@ -55,6 +55,7 @@ def test_example_lands_the_golden_orders(mapped: dict[str, list[dict[str, Any]]]
     assert len(expected) == golden.expected()["files"][golden.key(JOB)]["orders.mapped"]["rows"]
     assert sorted(map(order_key, mapped["orders.mapped"])) == sorted(map(order_key, expected))
     assert all(row["filled"] is None and row["remaining"] is None for row in mapped["orders.mapped"])
+    assert {(row["venue"], row["pair"]) for row in mapped["orders.mapped"]} == {("binance", "ETH-USDT")}
     assert len(mapped["orders.raw"]) == len(expected)
 
 
@@ -67,3 +68,4 @@ def test_example_lands_the_golden_fills(mapped: dict[str, list[dict[str, Any]]])
     assert len(expected) == golden.expected()["files"][golden.key(JOB)]["fills.mapped"]["rows"]
     assert sorted(map(fill_key, mapped["fills.mapped"])) == sorted(map(fill_key, expected))
     assert len(mapped["fills.raw"]) == len(expected)
+    assert {(row["venue"], row["pair"]) for row in mapped["fills.mapped"]} == {("binance", "ETH-USDT")}

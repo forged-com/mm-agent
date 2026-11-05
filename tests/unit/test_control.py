@@ -4,8 +4,8 @@ from mm_agent.control import ControlPlane
 from mm_agent.types import ControlError, Job
 from tests.conftest import StubControlPlane
 
-JOB = Job(start=1_760_702_400_000, end=1_760_706_000_000, pair="ETH/USDT", venue="binance")
-JOB_WIRE = {"from": JOB.start, "to": JOB.end, "pair": JOB.pair, "venue": JOB.venue}
+JOB = Job(start=1_760_702_400_000, end=1_760_706_000_000, asset="ETH", venue="binance")
+JOB_WIRE = {"from": JOB.start, "to": JOB.end, "asset": "ETH", "venue": "binance", "quote": None}
 
 
 def client(stub: StubControlPlane) -> ControlPlane:
@@ -36,10 +36,10 @@ def test_check_in_payload(stub: StubControlPlane) -> None:
 
 
 def test_jobs_parsed(stub: StubControlPlane) -> None:
-    stub.respond("/jobs", 200, {"jobs": [JOB_WIRE, {**JOB_WIRE, "pair": "BTC/USDT"}]})
+    stub.respond("/jobs", 200, {"jobs": [JOB_WIRE, {**JOB_WIRE, "asset": "BTC", "venue": None}]})
     jobs = client(stub).jobs()
     assert stub.calls[0].method == "GET"
-    assert jobs == [JOB, Job(start=JOB.start, end=JOB.end, pair="BTC/USDT", venue="binance")]
+    assert jobs == [JOB, Job(start=JOB.start, end=JOB.end, asset="BTC")]
 
 
 def test_jobs_empty(stub: StubControlPlane) -> None:
@@ -53,12 +53,29 @@ def test_jobs_empty(stub: StubControlPlane) -> None:
         ({}, "expected a list under 'jobs'"),
         ({"jobs": {}}, "expected a list under 'jobs'"),
         ({"jobs": ["x"]}, "expected an object"),
-        ({"jobs": [{"from": 1, "to": 2, "pair": "p"}]}, "missing 'venue'"),
-        ({"jobs": [{"from": "1", "to": 2, "pair": "p", "venue": "v"}]}, "from/to must be epoch ms"),
-        ({"jobs": [{"from": 2, "to": 2, "pair": "p", "venue": "v"}]}, "from < to"),
-        ({"jobs": [{"from": False, "to": True, "pair": "p", "venue": "v"}]}, "from/to must be epoch ms"),
-        ({"jobs": [{"from": -1, "to": 2, "pair": "p", "venue": "v"}]}, "0 <= from"),
-        ({"jobs": [{"from": 1, "to": 2, "pair": 1, "venue": "v"}]}, "pair and venue must be strings"),
+        ({"jobs": [{"from": 1, "to": 2, "asset": "a", "quote": None}]}, "missing 'venue'"),
+        ({"jobs": [{"from": 1, "to": 2, "asset": "a", "venue": None}]}, "missing 'quote'"),
+        ({"jobs": [{"from": 1, "to": 2, "venue": None, "quote": None}]}, "missing 'asset'"),
+        (
+            {"jobs": [{"from": "1", "to": 2, "asset": "a", "venue": "v", "quote": None}]},
+            "from/to must be epoch ms",
+        ),
+        ({"jobs": [{"from": 2, "to": 2, "asset": "a", "venue": "v", "quote": None}]}, "from < to"),
+        (
+            {"jobs": [{"from": False, "to": True, "asset": "a", "venue": "v", "quote": None}]},
+            "from/to must be epoch ms",
+        ),
+        ({"jobs": [{"from": -1, "to": 2, "asset": "a", "venue": "v", "quote": None}]}, "0 <= from"),
+        ({"jobs": [{"from": 1, "to": 2, "asset": 1, "venue": "v", "quote": None}]}, "asset must be a string"),
+        ({"jobs": [{"from": 1, "to": 2, "asset": None, "venue": "v", "quote": None}]}, "asset must be a string"),
+        (
+            {"jobs": [{"from": 1, "to": 2, "asset": "a", "venue": 1, "quote": None}]},
+            "venue and quote must be strings or null",
+        ),
+        (
+            {"jobs": [{"from": 1, "to": 2, "asset": "a", "venue": None, "quote": 1}]},
+            "venue and quote must be strings or null",
+        ),
     ],
 )
 def test_jobs_rejects_bad_shape(stub: StubControlPlane, body: object, message: str) -> None:

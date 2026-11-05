@@ -28,15 +28,15 @@ from mm_agent.landing import Landed, Writer, put
 from mm_agent.normalise import Normaliser, resolve
 from mm_agent.receipts import JobReceipt, RunError, RunReceipt
 from mm_agent.types import (
-    Asset,
     Config,
     ConfigError,
     ControlError,
     Job,
+    Resolved,
     SourceKind,
 )
 from mm_agent.utils import now_millis
-from mm_agent.window import holds_fill, holds_order
+from mm_agent.window import holds_fill, holds_order, in_target
 
 log = logging.getLogger("mm_agent")
 
@@ -179,12 +179,10 @@ def summarise(
 def process(cfg: Config, control: ControlPlane, job: Job) -> str | None:
     receipt = land(cfg, job, lambda file: put(control.upload_url(job, file.name), file))
     if receipt.error:
-        log.error("job %s %s [%d, %d): %s", job.pair, job.venue, job.start, job.end, receipt.error)
+        log.error("job %s [%d, %d): %s", job.label, job.start, job.end, receipt.error)
     else:
         rows = sum(f.rows for f in receipt.files if f.name.endswith(MAPPED_SUFFIX))
-        log.info(
-            "job %s %s [%d, %d): %d rows in %d ms", job.pair, job.venue, job.start, job.end, rows, receipt.query_ms
-        )
+        log.info("job %s [%d, %d): %d rows in %d ms", job.label, job.start, job.end, rows, receipt.query_ms)
     try:
         control.receipt(receipt.wire())
     except ControlError as e:
@@ -194,12 +192,12 @@ def process(cfg: Config, control: ControlPlane, job: Job) -> str | None:
 
 @dataclass
 class Progress:
-    asset: Asset | None = None
+    resolved: Resolved | None = None
     files: list[Landed] = field(default_factory=list)
     query_ms: int = 0
 
     def receipt(self, job: Job, error: str | None = None) -> JobReceipt:
-        return JobReceipt(job, self.asset, tuple(self.files), self.query_ms, error=error)
+        return JobReceipt(job, self.resolved, tuple(self.files), self.query_ms, error=error)
 
 
 def land(cfg: Config, job: Job, deliver: Callable[[Landed], None]) -> JobReceipt:
@@ -209,17 +207,17 @@ def land(cfg: Config, job: Job, deliver: Callable[[Landed], None]) -> JobReceipt
     except Exception as e:
         if isinstance(e, JOB_ERRORS):
             return progress.receipt(job, str(e))
-        log.exception("job %s %s [%d, %d) crashed", job.pair, job.venue, job.start, job.end)
+        log.exception("job %s [%d, %d) crashed", job.label, job.start, job.end)
         return progress.receipt(job, f"{type(e).__name__}: {e}")
     return progress.receipt(job)
 
 
 def _land(cfg: Config, job: Job, deliver: Callable[[Landed], None], progress: Progress) -> None:
-    progress.asset = resolve(cfg.aliases, job)
+    progress.resolved = resolve(cfg.aliases, job)
     clock = time.monotonic()
     with TemporaryDirectory() as directory:
         try:
-            spooled = fetch(cfg, job, progress.asset, Path(directory))
+            spooled = fetch(cfg, job, progress.resolved, Path(directory))
         finally:
             progress.query_ms = _elapsed_ms(clock)
         for file in spooled:
@@ -227,20 +225,32 @@ def _land(cfg: Config, job: Job, deliver: Callable[[Landed], None], progress: Pr
             progress.files.append(file)
 
 
-def fetch(cfg: Config, job: Job, asset: Asset, directory: Path) -> tuple[Landed, ...]:
+def fetch(cfg: Config, job: Job, resolved: Resolved, directory: Path) -> tuple[Landed, ...]:
     normaliser = Normaliser(cfg)
     if cfg.source.kind is SourceKind.FILES:
-        orders = files.rows(cfg.source, cfg.orders, job, asset)
-        fills = files.rows(cfg.source, cfg.fills, job, asset)
+        orders = files.rows(cfg.source, cfg.orders, job, resolved)
+        fills = files.rows(cfg.source, cfg.fills, job, resolved)
         return (
-            *spool(directory, "orders", orders, normaliser.order, lambda order: holds_order(job, order)),
-            *spool(directory, "fills", fills, normaliser.fill, lambda fill: holds_fill(job, fill)),
+            *spool(
+                directory,
+                "orders",
+                orders,
+                normaliser.order,
+                lambda order: holds_order(job, order) and in_target(resolved, order),
+            ),
+            *spool(
+                directory,
+                "fills",
+                fills,
+                normaliser.fill,
+                lambda fill: holds_fill(job, fill) and in_target(resolved, fill),
+            ),
         )
-    orders = sql.rows(cfg.source, cfg.orders, job, asset)
-    fills = sql.rows(cfg.source, cfg.fills, job, asset)
+    orders = sql.rows(cfg.source, cfg.orders, job, resolved)
+    fills = sql.rows(cfg.source, cfg.fills, job, resolved)
     return (
-        *spool(directory, "orders", orders, normaliser.order, _every),
-        *spool(directory, "fills", fills, normaliser.fill, _every),
+        *spool(directory, "orders", orders, normaliser.order, lambda order: in_target(resolved, order)),
+        *spool(directory, "fills", fills, normaliser.fill, lambda fill: in_target(resolved, fill)),
     )
 
 
@@ -258,10 +268,6 @@ def spool[T](
                 raw.write(row)
                 mapped.write(record)
     return raw.close(), mapped.close()
-
-
-def _every(record: object) -> bool:
-    return True
 
 
 def _elapsed_ms(clock: float) -> int:

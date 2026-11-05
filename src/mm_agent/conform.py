@@ -63,7 +63,7 @@ class Audit:
         self.cfg = cfg
         self.job = job
         self.now = now_millis()
-        self.orders: set[str] = set()
+        self.orders: set[tuple[str, str, str]] = set()
         self.raw_rows = 0
         self.faults: dict[str, Tally] = {}
 
@@ -92,7 +92,7 @@ class Audit:
     def _orders(self, orders: Iterator[dict[str, Any]]) -> None:
         for row in orders:
             order = Order(**row)
-            self.orders.add(order.id)
+            self.orders.add((order.venue, order.pair, order.id))
             example = f"order {order.id!r} placed={order.placed} ended={order.ended}"
             if not holds_order(self.job, order):
                 self._fault(CHECK_WINDOW, example)
@@ -105,7 +105,7 @@ class Audit:
             example = f"fill of order {fill.order!r} ts={fill.ts}"
             if not holds_fill(self.job, fill):
                 self._fault(CHECK_WINDOW, example)
-            if fill.order not in self.orders:
+            if (fill.venue, fill.pair, fill.order) not in self.orders:
                 self._fault(CHECK_REFERENCES, example)
 
     def _fault(self, name: str, example: str) -> None:
@@ -141,7 +141,7 @@ class Gate:
                 f" over {self.jobs} job run(s) in {self.windows} window(s)"
             )
         if not self.jobs:
-            return f"conformance {VERDICT_FAIL}: no jobs; configure at least one pair and one venue"
+            return f"conformance {VERDICT_FAIL}: no jobs; configure at least one asset"
         return f"conformance {VERDICT_FAIL}: {self.failed} of {len(self.checks)} check(s) failed"
 
 

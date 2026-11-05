@@ -7,21 +7,31 @@ import pytest
 
 from mm_agent.config import parse
 from mm_agent.normalise import Normaliser, resolve
-from mm_agent.types import Aliases, Asset, Fill, Job, NormaliseError, Order
+from mm_agent.types import Aliases, Fill, Job, NormaliseError, Order, Resolved
 
 NOON = 1_792_238_400_000
-ALIASES = Aliases(venues={"binance": "BINANCE_SPOT"}, pairs={"ETH/USDT": "ETHUSDT"})
-JOB = Job(start=NOON, end=NOON + 3_600_000, pair="ETH/USDT", venue="binance")
+ALIASES = Aliases(assets={"ETH": "ETH"}, venues={"binance": "BINANCE_SPOT"}, pairs={"ETH/USDT": "ETHUSDT"})
+JOB = Job(start=NOON, end=NOON + 3_600_000, asset="ETH")
 
 ORDER_ROW = {
     "order_id": 42,
+    "venue": "BINANCE_SPOT",
+    "symbol": "ETHUSDT",
     "side": "BUY",
     "price": Decimal("1850.50"),
     "orig_qty": "0.25",
     "created_at": NOON,
     "closed_at": None,
 }
-FILL_ROW = {"order_id": "42", "exec_time": NOON + 1000, "px": 1850.5, "qty": 1, "side": "S"}
+FILL_ROW = {
+    "order_id": "42",
+    "venue": "BINANCE_SPOT",
+    "symbol": "ETHUSDT",
+    "exec_time": NOON + 1000,
+    "px": 1850.5,
+    "qty": 1,
+    "side": "S",
+}
 
 
 @pytest.fixture
@@ -35,28 +45,46 @@ def with_timezone(valid_yaml: str, timezone: str) -> Normaliser:
     )
 
 
-def test_resolve_aliases() -> None:
-    assert resolve(ALIASES, JOB) == Asset(pair="ETHUSDT", venue="BINANCE_SPOT")
+def test_resolve_full_dump_needs_only_the_asset() -> None:
+    assert resolve(Aliases(assets={"BTC": "XBT"}, venues={}, pairs={}), Job(0, 1, "BTC")) == Resolved("XBT")
 
 
-def test_resolve_missing_venue() -> None:
-    with pytest.raises(NormaliseError, match="no alias for venue 'okx'"):
-        resolve(ALIASES, Job(start=0, end=1, pair="ETH/USDT", venue="okx"))
+def test_resolve_narrowed() -> None:
+    assert resolve(ALIASES, Job(0, 1, "ETH", "binance", "USDT")) == Resolved("ETH", "BINANCE_SPOT", "ETHUSDT")
+    assert resolve(ALIASES, Job(0, 1, "ETH", "binance")) == Resolved("ETH", "BINANCE_SPOT", None)
+    assert resolve(ALIASES, Job(0, 1, "ETH", None, "USDT")) == Resolved("ETH", None, "ETHUSDT")
 
 
-def test_resolve_missing_pair() -> None:
-    with pytest.raises(NormaliseError, match="no alias for pair 'BTC/USDT'"):
-        resolve(ALIASES, Job(start=0, end=1, pair="BTC/USDT", venue="binance"))
+@pytest.mark.parametrize(
+    ("job", "message"),
+    [
+        (Job(0, 1, "BTC"), "no alias for asset 'BTC'"),
+        (Job(0, 1, "ETH", "okx"), "no alias for venue 'okx'"),
+        (Job(0, 1, "ETH", None, "USDC"), "no alias for pair 'ETH/USDC'"),
+    ],
+)
+def test_resolve_missing_alias(job: Job, message: str) -> None:
+    with pytest.raises(NormaliseError, match=message):
+        resolve(ALIASES, job)
 
 
 def test_order_row(normaliser: Normaliser) -> None:
     assert normaliser.order(ORDER_ROW) == Order(
-        id="42", side="buy", price="1850.50", qty="0.25", placed=NOON, ended=None
+        id="42",
+        venue="BINANCE_SPOT",
+        pair="ETHUSDT",
+        side="buy",
+        price="1850.50",
+        qty="0.25",
+        placed=NOON,
+        ended=None,
     )
 
 
 def test_fill_row(normaliser: Normaliser) -> None:
-    assert normaliser.fill(FILL_ROW) == Fill(order="42", ts=NOON + 1000, price="1850.5", qty="1", side="sell")
+    assert normaliser.fill(FILL_ROW) == Fill(
+        venue="BINANCE_SPOT", pair="ETHUSDT", order="42", ts=NOON + 1000, price="1850.5", qty="1", side="sell"
+    )
 
 
 def with_progress(valid_yaml: str) -> Normaliser:
@@ -93,13 +121,17 @@ def test_mapped_filled_column_must_exist(valid_yaml: str) -> None:
 
 def test_fill_id_is_the_sha256_of_the_mapped_row(normaliser: Normaliser) -> None:
     fill = normaliser.fill(FILL_ROW)
-    assert fill.id == hashlib.sha256(b'["42",1792238401000,"1850.5","1","sell"]').hexdigest()
+    assert (
+        fill.id == hashlib.sha256(b'["BINANCE_SPOT","ETHUSDT","42",1792238401000,"1850.5","1","sell"]').hexdigest()
+    )
     assert fill.id == normaliser.fill({**FILL_ROW, "qty": "1", "side": "sell"}).id
     assert fill.id != normaliser.fill({**FILL_ROW, "qty": 2}).id
+    assert fill.id != normaliser.fill({**FILL_ROW, "venue": "OKX"}).id
+    assert fill.id != normaliser.fill({**FILL_ROW, "symbol": "ETHUSDC"}).id
 
 
 def test_extra_columns_ignored(normaliser: Normaliser) -> None:
-    assert normaliser.order({**ORDER_ROW, "venue": "x", "client_tag": 7}).id == "42"
+    assert normaliser.order({**ORDER_ROW, "exchange": "x", "client_tag": 7}).id == "42"
 
 
 def test_missing_column(normaliser: Normaliser) -> None:
@@ -109,7 +141,7 @@ def test_missing_column(normaliser: Normaliser) -> None:
         normaliser.order(row)
 
 
-@pytest.mark.parametrize("field", ["order_id", "side", "price", "orig_qty", "created_at"])
+@pytest.mark.parametrize("field", ["order_id", "venue", "symbol", "side", "price", "orig_qty", "created_at"])
 @pytest.mark.parametrize("value", [None, "", "   "])
 def test_required_fields_reject_null(normaliser: Normaliser, field: str, value: object) -> None:
     with pytest.raises(NormaliseError, match="is null"):
@@ -296,7 +328,7 @@ def test_naive_dst_fold_and_gap_use_the_pre_transition_offset(valid_yaml: str, v
     assert normaliser.order({**ORDER_ROW, "created_at": value}).placed == expected
 
 
-@pytest.mark.parametrize("column", ["order_id", "exec_time", "px", "qty", "side"])
+@pytest.mark.parametrize("column", ["order_id", "venue", "symbol", "exec_time", "px", "qty", "side"])
 def test_fill_fields_reject_null(normaliser: Normaliser, column: str) -> None:
     with pytest.raises(NormaliseError, match=rf"fills\.\w+ \({column}\): is null"):
         normaliser.fill({**FILL_ROW, column: None})

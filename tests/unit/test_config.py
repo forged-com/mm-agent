@@ -18,6 +18,7 @@ def test_parses_valid_config(valid_yaml: str) -> None:
     assert config.source.kind is SourceKind.SQLITE
     assert config.source.dsn == "sqlite:///oms.db"
     assert config.source.timezone == "UTC"
+    assert config.aliases.assets == {"ETH": "ETH"}
     assert config.aliases.venues == {"binance": "BINANCE_SPOT"}
     assert config.aliases.pairs == {"ETH/USDT": "ETHUSDT"}
     assert config.orders.query == "select * from orders"
@@ -174,12 +175,19 @@ def test_source_unknown_key(valid_yaml: str) -> None:
         parse(dump(doc))
 
 
-def test_aliases_default_empty(valid_yaml: str) -> None:
+def test_venue_and_pair_aliases_default_empty(valid_yaml: str) -> None:
     doc = yaml.safe_load(valid_yaml)
-    doc["aliases"] = {}
+    doc["aliases"] = {"assets": {"ETH": "ETH"}}
     config = parse(dump(doc))
     assert config.aliases.venues == {}
     assert config.aliases.pairs == {}
+
+
+def test_asset_aliases_are_required(valid_yaml: str) -> None:
+    doc = yaml.safe_load(valid_yaml)
+    del doc["aliases"]["assets"]
+    with pytest.raises(ConfigError, match=r"aliases\.assets: expected a mapping, got nothing"):
+        parse(dump(doc))
 
 
 def test_aliases_values_must_be_strings(valid_yaml: str) -> None:
@@ -215,7 +223,7 @@ def test_fills_map_may_not_name_the_derived_id(valid_yaml: str) -> None:
     doc["fills"]["map"]["id"] = "trade_id"
     with pytest.raises(
         ConfigError,
-        match=r"fills.map: unknown \['id'\]; schema fields are \['order', 'price', 'qty', 'side', 'ts'\]",
+        match=r"fills.map: unknown \['id'\]; schema fields are \['order', 'pair', 'price', 'qty', 'side', 'ts', 'venue'\]",
     ):
         parse(dump(doc))
 

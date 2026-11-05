@@ -8,14 +8,14 @@ import requests
 from mm_agent.control import ControlPlane
 from mm_agent.landing import Writer, put
 from mm_agent.receipts import JobReceipt, RunReceipt
-from mm_agent.types import Asset, ControlError, Job, LandingError
+from mm_agent.types import ControlError, Job, LandingError, Resolved
 from tests.e2e.conftest import TOKEN
 from tests.e2e.fake_control import FakeControlPlane
 from tests.e2e.fake_landing import FakeLanding
 from tests.fixtures import golden
 
-JOB = Job(golden.START, golden.END, "ETH/USDT", "binance")
-ASSET = Asset("ETHUSDT", "BINANCE_SPOT")
+JOB = Job(golden.START, golden.END, "ETH")
+RESOLVED = Resolved("ETH")
 
 
 def client(control: FakeControlPlane, token: str = TOKEN) -> ControlPlane:
@@ -49,9 +49,9 @@ def test_upload_url_signs_a_path_the_landing_accepts(
     url = client(control).upload_url(JOB, "orders.mapped")
     assert url.startswith(landing.url + "/")
     put(url, landed)
-    key = f"golden/binance/ETH-USDT/{golden.START}-{golden.END}/orders.mapped.jsonl.gz"
+    key = f"golden/ETH/all/all/{golden.START}-{golden.END}/orders.mapped.jsonl.gz"
     assert control.uploads == [
-        {"from": JOB.start, "to": JOB.end, "pair": "ETH/USDT", "venue": "binance", "name": "orders.mapped"}
+        {"from": JOB.start, "to": JOB.end, "asset": "ETH", "venue": None, "quote": None, "name": "orders.mapped"}
     ]
     stored = landing.objects[key]
     assert stored.content_type == "application/gzip"
@@ -74,9 +74,9 @@ def test_landing_refuses_unsigned_or_mis_signed_puts(landing: FakeLanding, tmp_p
 def test_ok_receipt_completes_the_job(control: FakeControlPlane) -> None:
     control.seed(*golden.jobs())
     api = client(control)
-    api.receipt(JobReceipt(JOB, ASSET, (), query_ms=3).wire())
+    api.receipt(JobReceipt(JOB, RESOLVED, (), query_ms=3).wire())
     assert api.jobs() == [job for job in golden.jobs() if job != JOB]
-    assert control.completed == [{"from": JOB.start, "to": JOB.end, "pair": "ETH/USDT", "venue": "binance"}]
+    assert control.completed == [{"from": JOB.start, "to": JOB.end, "asset": "ETH", "venue": None, "quote": None}]
 
 
 def test_failed_receipt_leaves_the_job_outstanding(control: FakeControlPlane) -> None:

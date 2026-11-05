@@ -32,8 +32,8 @@ def configured(
 
 
 def object_key(job: Job, name: str) -> str:
-    pair = job.pair.replace("/", "-")
-    return f"{golden.MM}/{job.venue}/{pair}/{job.start}-{job.end}/{name}.jsonl.gz"
+    target = f"{job.asset}/{job.venue or 'all'}/{job.quote or 'all'}"
+    return f"{golden.MM}/{target}/{job.start}-{job.end}/{name}.jsonl.gz"
 
 
 @pytest.mark.parametrize("kind", OFFLINE)
@@ -71,11 +71,13 @@ def test_one_tick_lands_every_golden_job(
     for job, job_receipt in zip(jobs, control.receipts[:2], strict=True):
         assert job_receipt["status"] == "ok" and job_receipt["error"] is None
         assert job_receipt["window"] == {"from": job.start, "to": job.end}
-        assert job_receipt["asset"] == {
-            "pair": job.pair,
-            "venue": job.venue,
-            "source_pair": golden.PAIRS[job.pair],
-            "source_venue": golden.VENUES[job.venue],
+        assert job_receipt["target"] == {
+            "asset": job.asset,
+            "venue": None,
+            "quote": None,
+            "source_asset": golden.ASSETS[job.asset],
+            "source_venue": None,
+            "source_pair": None,
         }
         assert sorted(job_receipt["files"]) == sorted(NAMES)
         for name, file in job_receipt["files"].items():

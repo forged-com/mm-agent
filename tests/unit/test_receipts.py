@@ -2,24 +2,26 @@ from pathlib import Path
 
 from mm_agent.landing import Landed
 from mm_agent.receipts import JobReceipt, RunError, RunReceipt
-from mm_agent.types import Asset, Job
+from mm_agent.types import Job, Resolved
 
-JOB = Job(start=1_760_702_400_000, end=1_760_706_000_000, pair="ETH/USDT", venue="binance")
-ASSET = Asset(pair="ETHUSDT", venue="BINANCE_SPOT")
+JOB = Job(start=1_760_702_400_000, end=1_760_706_000_000, asset="ETH", venue="binance", quote="USDT")
+RESOLVED = Resolved(asset="ETH", venue="BINANCE_SPOT", pair="ETHUSDT")
 ORDERS_RAW = Landed("orders.raw", Path("/tmp/x/orders.raw.jsonl.gz"), 12, 345, "a" * 64)
 ORDERS_MAPPED = Landed("orders.mapped", Path("/tmp/x/orders.mapped.jsonl.gz"), 12, 300, "b" * 64)
 
 
 def test_job_receipt_ok() -> None:
-    receipt = JobReceipt(JOB, ASSET, (ORDERS_RAW, ORDERS_MAPPED), query_ms=42, warnings=("slow",))
+    receipt = JobReceipt(JOB, RESOLVED, (ORDERS_RAW, ORDERS_MAPPED), query_ms=42, warnings=("slow",))
     assert receipt.wire() == {
         "kind": "job",
         "status": "ok",
-        "asset": {
-            "pair": "ETH/USDT",
+        "target": {
+            "asset": "ETH",
             "venue": "binance",
-            "source_pair": "ETHUSDT",
+            "quote": "USDT",
+            "source_asset": "ETH",
             "source_venue": "BINANCE_SPOT",
+            "source_pair": "ETHUSDT",
         },
         "window": {"from": JOB.start, "to": JOB.end},
         "files": {
@@ -37,21 +39,22 @@ def test_job_receipt_failed_without_alias() -> None:
     wire = receipt.wire()
     assert wire["status"] == "failed"
     assert wire["error"] == "no alias for ETH/USDT on binance"
-    assert wire["asset"]["source_pair"] is None
-    assert wire["asset"]["source_venue"] is None
+    assert wire["target"]["source_asset"] is None
+    assert wire["target"]["source_pair"] is None
+    assert wire["target"]["source_venue"] is None
     assert wire["files"] == {}
     assert wire["warnings"] == []
 
 
 def test_job_receipt_failed_keeps_landed_files() -> None:
-    receipt = JobReceipt(JOB, ASSET, (ORDERS_RAW,), query_ms=7, error="cursor died")
+    receipt = JobReceipt(JOB, RESOLVED, (ORDERS_RAW,), query_ms=7, error="cursor died")
     wire = receipt.wire()
     assert wire["status"] == "failed"
     assert list(wire["files"]) == ["orders.raw"]
 
 
 def test_job_receipt_wire_is_json_plain() -> None:
-    wire = JobReceipt(JOB, ASSET, (ORDERS_RAW,), query_ms=1).wire()
+    wire = JobReceipt(JOB, RESOLVED, (ORDERS_RAW,), query_ms=1).wire()
     assert all(isinstance(k, str) for k in wire)
     assert not any(isinstance(v, Path) for f in wire["files"].values() for v in f.values())
 
@@ -78,7 +81,7 @@ def test_run_receipt() -> None:
         "jobs": {"attempted": 3, "succeeded": 1, "failed": 2},
         "errors": [
             {
-                "job": {"from": JOB.start, "to": JOB.end, "pair": "ETH/USDT", "venue": "binance"},
+                "job": {"from": JOB.start, "to": JOB.end, "asset": "ETH", "venue": "binance", "quote": "USDT"},
                 "error": "cursor died",
             },
             {"job": None, "error": "GET /jobs: HTTP 503"},

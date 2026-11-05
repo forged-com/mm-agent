@@ -35,6 +35,8 @@ class SourceKind(StrEnum):
 @dataclass(frozen=True)
 class Order:
     id: str
+    venue: str
+    pair: str
     side: str
     price: str
     qty: str
@@ -47,6 +49,8 @@ class Order:
 @dataclass(frozen=True)
 class Fill:
     id: str = field(init=False)
+    venue: str
+    pair: str
     order: str
     ts: int
     price: str
@@ -54,7 +58,9 @@ class Fill:
     side: str
 
     def __post_init__(self) -> None:
-        content = json.dumps([self.order, self.ts, self.price, self.qty, self.side], separators=(",", ":"))
+        content = json.dumps(
+            [self.venue, self.pair, self.order, self.ts, self.price, self.qty, self.side], separators=(",", ":")
+        )
         object.__setattr__(self, "id", hashlib.sha256(content.encode()).hexdigest())
 
 
@@ -62,14 +68,20 @@ class Fill:
 class Job:
     start: int
     end: int
-    pair: str
-    venue: str
+    asset: str
+    venue: str | None = None
+    quote: str | None = None
+
+    @property
+    def label(self) -> str:
+        return f"{self.asset} {self.venue or 'all'}/{self.quote or 'all'}"
 
 
 @dataclass(frozen=True)
-class Asset:
-    pair: str
-    venue: str
+class Resolved:
+    asset: str
+    venue: str | None = None
+    pair: str | None = None
 
 
 @dataclass(frozen=True)
@@ -86,6 +98,7 @@ class Source:
 
 @dataclass(frozen=True)
 class Aliases:
+    assets: dict[str, str]
     venues: dict[str, str]
     pairs: dict[str, str]
 

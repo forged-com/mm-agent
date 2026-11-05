@@ -6,15 +6,21 @@ from typing import Any
 from zoneinfo import ZoneInfo
 
 from mm_agent.constants import BUY_SIDES, DECIMAL_PATTERN, EPOCH_MILLIS_BELOW, EPOCH_SECONDS_BELOW, SELL_SIDES
-from mm_agent.types import Aliases, Asset, Config, Fill, Job, NormaliseError, Order, Table
+from mm_agent.types import Aliases, Config, Fill, Job, NormaliseError, Order, Resolved, Table
 
 
-def resolve(aliases: Aliases, job: Job) -> Asset:
-    if job.venue not in aliases.venues:
-        raise NormaliseError(f"no alias for venue {job.venue!r}")
-    if job.pair not in aliases.pairs:
-        raise NormaliseError(f"no alias for pair {job.pair!r}")
-    return Asset(pair=aliases.pairs[job.pair], venue=aliases.venues[job.venue])
+def resolve(aliases: Aliases, job: Job) -> Resolved:
+    return Resolved(
+        asset=_alias(aliases.assets, "asset", job.asset),
+        venue=None if job.venue is None else _alias(aliases.venues, "venue", job.venue),
+        pair=None if job.quote is None else _alias(aliases.pairs, "pair", f"{job.asset}/{job.quote}"),
+    )
+
+
+def _alias(names: dict[str, str], kind: str, name: str) -> str:
+    if name not in names:
+        raise NormaliseError(f"no alias for {kind} {name!r}")
+    return names[name]
 
 
 class Normaliser:
@@ -27,6 +33,8 @@ class Normaliser:
         pick = _picker(row, self.orders, "orders")
         return Order(
             id=_text(*pick("id")),
+            venue=_text(*pick("venue")),
+            pair=_text(*pick("pair")),
             side=_side(*pick("side")),
             price=_decimal(*pick("price")),
             qty=_decimal(*pick("qty")),
@@ -39,6 +47,8 @@ class Normaliser:
     def fill(self, row: dict[str, Any]) -> Fill:
         pick = _picker(row, self.fills, "fills")
         return Fill(
+            venue=_text(*pick("venue")),
+            pair=_text(*pick("pair")),
             order=_text(*pick("order")),
             ts=_millis(*pick("ts"), self.zone),
             price=_decimal(*pick("price")),
