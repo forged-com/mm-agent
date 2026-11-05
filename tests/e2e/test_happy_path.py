@@ -77,7 +77,7 @@ def test_one_tick_lands_every_golden_job(
             "quote": None,
             "source_asset": golden.ASSETS[job.asset],
             "source_venue": None,
-            "source_pair": None,
+            "source_pairs": None,
         }
         assert sorted(job_receipt["files"]) == sorted(NAMES)
         for name, file in job_receipt["files"].items():

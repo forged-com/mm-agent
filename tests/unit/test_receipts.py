@@ -5,7 +5,7 @@ from mm_agent.receipts import JobReceipt, RunError, RunReceipt
 from mm_agent.types import Job, Resolved
 
 JOB = Job(start=1_760_702_400_000, end=1_760_706_000_000, asset="ETH", venue="binance", quote="USDT")
-RESOLVED = Resolved(asset="ETH", venue="BINANCE_SPOT", pair="ETHUSDT")
+RESOLVED = Resolved(asset="ETH", venue="BINANCE_SPOT", pairs=("ETHUSDT",))
 ORDERS_RAW = Landed("orders.raw", Path("/tmp/x/orders.raw.jsonl.gz"), 12, 345, "a" * 64)
 ORDERS_MAPPED = Landed("orders.mapped", Path("/tmp/x/orders.mapped.jsonl.gz"), 12, 300, "b" * 64)
 
@@ -21,7 +21,7 @@ def test_job_receipt_ok() -> None:
             "quote": "USDT",
             "source_asset": "ETH",
             "source_venue": "BINANCE_SPOT",
-            "source_pair": "ETHUSDT",
+            "source_pairs": ["ETHUSDT"],
         },
         "window": {"from": JOB.start, "to": JOB.end},
         "files": {
@@ -40,7 +40,7 @@ def test_job_receipt_failed_without_alias() -> None:
     assert wire["status"] == "failed"
     assert wire["error"] == "no alias for ETH/USDT on binance"
     assert wire["target"]["source_asset"] is None
-    assert wire["target"]["source_pair"] is None
+    assert wire["target"]["source_pairs"] is None
     assert wire["target"]["source_venue"] is None
     assert wire["files"] == {}
     assert wire["warnings"] == []

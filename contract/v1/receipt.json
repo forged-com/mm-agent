@@ -14,7 +14,7 @@
         "status": {"type": "string", "enum": ["ok", "failed"]},
         "target": {
           "type": "object",
-          "required": ["asset", "venue", "quote", "source_asset", "source_venue", "source_pair"],
+          "required": ["asset", "venue", "quote", "source_asset", "source_venue", "source_pairs"],
           "additionalProperties": false,
           "properties": {
             "asset": {"$ref": "job.json#/properties/asset"},
@@ -22,7 +22,7 @@
             "quote": {"$ref": "job.json#/properties/quote"},
             "source_asset": {"type": ["string", "null"]},
             "source_venue": {"type": ["string", "null"]},
-            "source_pair": {"type": ["string", "null"]}
+            "source_pairs": {"type": ["array", "null"], "items": {"type": "string"}, "minItems": 1}
           }
         },
         "window": {

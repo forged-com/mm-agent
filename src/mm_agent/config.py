@@ -13,7 +13,7 @@ from mm_agent.constants import (
     OPTIONAL_ORDER_FIELDS,
 )
 from mm_agent.types import Aliases, Config, ConfigError, Control, Fill, Order, Source, SourceKind, Table
-from mm_agent.utils import field_names, mapping, only_keys, string, string_map
+from mm_agent.utils import field_names, mapping, only_keys, string, string_map, strings_map
 
 
 def parse(text: str) -> Config:
@@ -86,7 +86,7 @@ def _aliases(node: dict[str, Any]) -> Aliases:
     return Aliases(
         assets=string_map(node.get("assets"), "aliases.assets"),
         venues=string_map(node.get("venues", {}), "aliases.venues"),
-        pairs=string_map(node.get("pairs", {}), "aliases.pairs"),
+        pairs=strings_map(node.get("pairs", {}), "aliases.pairs"),
     )
 
 

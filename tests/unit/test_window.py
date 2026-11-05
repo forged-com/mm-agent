@@ -56,6 +56,11 @@ def test_holds_fill(ts: int, held: bool) -> None:
     ],
 )
 def test_in_target(venue: str | None, pair: str | None, held: bool) -> None:
-    resolved = Resolved("ETH", venue, pair)
+    resolved = Resolved("ETH", venue, (pair,) if pair else None)
     assert in_target(resolved, order(NOON, None)) is held
     assert in_target(resolved, fill(NOON)) is held
+
+
+def test_in_target_matches_any_pair_string() -> None:
+    assert in_target(Resolved("ETH", None, ("OTHER", "P")), order(NOON, None))
+    assert not in_target(Resolved("ETH", None, ("OTHER", "ANOTHER")), order(NOON, None))

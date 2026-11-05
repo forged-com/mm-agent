@@ -10,4 +10,4 @@ def holds_fill(job: Job, fill: Fill) -> bool:
 
 
 def in_target(resolved: Resolved, record: Order | Fill) -> bool:
-    return resolved.venue in (None, record.venue) and resolved.pair in (None, record.pair)
+    return resolved.venue in (None, record.venue) and (resolved.pairs is None or record.pair in resolved.pairs)

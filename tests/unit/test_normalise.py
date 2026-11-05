@@ -10,7 +10,9 @@ from mm_agent.normalise import Normaliser, resolve
 from mm_agent.types import Aliases, Fill, Job, NormaliseError, Order, Resolved
 
 NOON = 1_792_238_400_000
-ALIASES = Aliases(assets={"ETH": "ETH"}, venues={"binance": "BINANCE_SPOT"}, pairs={"ETH/USDT": "ETHUSDT"})
+ALIASES = Aliases(
+    assets={"ETH": "ETH"}, venues={"binance": "BINANCE_SPOT"}, pairs={"ETH/USDT": ("ETHUSDT", "ETH-USDT")}
+)
 JOB = Job(start=NOON, end=NOON + 3_600_000, asset="ETH")
 
 ORDER_ROW = {
@@ -50,9 +52,11 @@ def test_resolve_full_dump_needs_only_the_asset() -> None:
 
 
 def test_resolve_narrowed() -> None:
-    assert resolve(ALIASES, Job(0, 1, "ETH", "binance", "USDT")) == Resolved("ETH", "BINANCE_SPOT", "ETHUSDT")
+    assert resolve(ALIASES, Job(0, 1, "ETH", "binance", "USDT")) == Resolved(
+        "ETH", "BINANCE_SPOT", ("ETHUSDT", "ETH-USDT")
+    )
     assert resolve(ALIASES, Job(0, 1, "ETH", "binance")) == Resolved("ETH", "BINANCE_SPOT", None)
-    assert resolve(ALIASES, Job(0, 1, "ETH", None, "USDT")) == Resolved("ETH", None, "ETHUSDT")
+    assert resolve(ALIASES, Job(0, 1, "ETH", None, "USDT")) == Resolved("ETH", None, ("ETHUSDT", "ETH-USDT"))
 
 
 @pytest.mark.parametrize(

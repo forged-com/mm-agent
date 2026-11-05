@@ -81,7 +81,7 @@ class Job:
 class Resolved:
     asset: str
     venue: str | None = None
-    pair: str | None = None
+    pairs: tuple[str, ...] | None = None
 
 
 @dataclass(frozen=True)
@@ -100,7 +100,7 @@ class Source:
 class Aliases:
     assets: dict[str, str]
     venues: dict[str, str]
-    pairs: dict[str, str]
+    pairs: dict[str, tuple[str, ...]]
 
 
 @dataclass(frozen=True)

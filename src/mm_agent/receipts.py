@@ -26,7 +26,7 @@ class JobReceipt:
                 "quote": self.job.quote,
                 "source_asset": self.resolved.asset if self.resolved else None,
                 "source_venue": self.resolved.venue if self.resolved else None,
-                "source_pair": self.resolved.pair if self.resolved else None,
+                "source_pairs": list(self.resolved.pairs) if self.resolved and self.resolved.pairs else None,
             },
             "window": {"from": self.job.start, "to": self.job.end},
             "files": {f.name: {"rows": f.rows, "bytes": f.bytes, "sha256": f.sha256} for f in self.files},

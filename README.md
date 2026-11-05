@@ -71,7 +71,7 @@ source:
 aliases:
   assets: {ETH: ETH, BTC: XBT}
   venues: {binance: BINANCE_SPOT, okx: OKX}
-  pairs: {ETH/USDT: ETHUSDT, BTC/USDT: BTCUSDT}
+  pairs: {ETH/USDT: [ETHUSDT, ETH-USDT], BTC/USDT: BTCUSDT}
 orders:
   query: |
     select order_id, venue, symbol, side, price, orig_qty, created_at, closed_at, filled_qty, orig_qty - filled_qty as remaining_qty
@@ -98,7 +98,7 @@ fills:
 | `source.timezone` | IANA zone of naive timestamps in your source. Defaults to `UTC`. Set it if your database stores local time. |
 | `aliases.assets` | Required. Forgd's asset name on the left, the string your query matches on the right. |
 | `aliases.venues` | Forgd's venue name on the left, the string in your rows on the right. Needed only if Forgd narrows a job to a venue. |
-| `aliases.pairs` | Forgd's pair name, `ASSET/QUOTE`, on the left, the string in your rows on the right. Needed only if Forgd narrows a job to a quote. |
+| `aliases.pairs` | Forgd's pair name, `ASSET/QUOTE`, on the left, the string in your rows on the right, or a list of them if venues spell it differently. Needed only if Forgd narrows a job to a quote. |
 | `orders.query`, `fills.query` | A SQL statement for the SQL kinds, or a glob for `files`. |
 | `orders.map`, `fills.map` | Forgd's field name on the left, your column on the right. Every schema field must be mapped and nothing else may be, except `filled` and `remaining` on orders, which may be left out. `venue` and `pair` must be columns on every row, because one job can span several of each. |
 

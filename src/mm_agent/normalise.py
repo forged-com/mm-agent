@@ -13,11 +13,11 @@ def resolve(aliases: Aliases, job: Job) -> Resolved:
     return Resolved(
         asset=_alias(aliases.assets, "asset", job.asset),
         venue=None if job.venue is None else _alias(aliases.venues, "venue", job.venue),
-        pair=None if job.quote is None else _alias(aliases.pairs, "pair", f"{job.asset}/{job.quote}"),
+        pairs=None if job.quote is None else _alias(aliases.pairs, "pair", f"{job.asset}/{job.quote}"),
     )
 
 
-def _alias(names: dict[str, str], kind: str, name: str) -> str:
+def _alias[T](names: dict[str, T], kind: str, name: str) -> T:
     if name not in names:
         raise NormaliseError(f"no alias for {kind} {name!r}")
     return names[name]

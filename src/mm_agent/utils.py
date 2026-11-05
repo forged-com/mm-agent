@@ -29,6 +29,17 @@ def string_map(node: Any, path: str) -> dict[str, str]:
     return dict(result)
 
 
+def strings_map(node: Any, path: str) -> dict[str, tuple[str, ...]]:
+    return {key: _strings(value, f"{path}.{key}") for key, value in mapping(node, path).items()}
+
+
+def _strings(value: Any, path: str) -> tuple[str, ...]:
+    values = value if isinstance(value, list) else [value]
+    if not values or not all(isinstance(v, str) and v.strip() for v in values):
+        raise ConfigError(f"{path}: expected a non-empty string or a list of them, got {describe(value)}")
+    return tuple(values)
+
+
 def only_keys(node: dict[str, Any], path: str, allowed: set[str]) -> None:
     if unknown := node.keys() - allowed:
         raise ConfigError(f"{path}: unknown keys {sorted(unknown)}; allowed are {sorted(allowed)}")

@@ -139,7 +139,7 @@ def test_run_happy_path(stub: StubControlPlane, cfg: Config, control: ControlPla
         "quote": None,
         "source_asset": "ETH",
         "source_venue": None,
-        "source_pair": None,
+        "source_pairs": None,
     }
     assert {name: f["rows"] for name, f in job["files"].items()} == {
         "orders.raw": 2,

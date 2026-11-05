@@ -18,7 +18,7 @@ from tests.contract import CONTRACT, NAMES, REGISTRY, SCHEMAS, check
 NOON = 1_792_238_400_000
 JOB = Job(start=NOON, end=NOON + 3_600_000, asset="ETH")
 NARROWED = Job(start=NOON, end=NOON + 3_600_000, asset="ETH", venue="binance", quote="USDT")
-RESOLVED = Resolved(asset="ETH", venue="BINANCE_SPOT", pair="ETHUSDT")
+RESOLVED = Resolved(asset="ETH", venue="BINANCE_SPOT", pairs=("ETHUSDT",))
 LANDED = Landed("orders.raw", Path("/tmp/x/orders.raw.jsonl.gz"), 12, 345, "a" * 64)
 ORDER_ROW = {
     "order_id": 42,

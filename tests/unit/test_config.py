@@ -20,7 +20,7 @@ def test_parses_valid_config(valid_yaml: str) -> None:
     assert config.source.timezone == "UTC"
     assert config.aliases.assets == {"ETH": "ETH"}
     assert config.aliases.venues == {"binance": "BINANCE_SPOT"}
-    assert config.aliases.pairs == {"ETH/USDT": "ETHUSDT"}
+    assert config.aliases.pairs == {"ETH/USDT": ("ETHUSDT",)}
     assert config.orders.query == "select * from orders"
     assert config.orders.map["placed"] == "created_at"
     assert config.fills.map["ts"] == "exec_time"
@@ -193,6 +193,20 @@ def test_asset_aliases_are_required(valid_yaml: str) -> None:
 def test_aliases_values_must_be_strings(valid_yaml: str) -> None:
     doc = yaml.safe_load(valid_yaml)
     doc["aliases"]["pairs"]["ETH/USDT"] = 1
+    with pytest.raises(ConfigError, match=r"aliases\.pairs\.ETH/USDT: expected a non-empty string"):
+        parse(dump(doc))
+
+
+def test_pair_alias_takes_a_list(valid_yaml: str) -> None:
+    doc = yaml.safe_load(valid_yaml)
+    doc["aliases"]["pairs"]["ETH/USDT"] = ["ETHUSDT", "ETH-USDT"]
+    assert parse(dump(doc)).aliases.pairs == {"ETH/USDT": ("ETHUSDT", "ETH-USDT")}
+
+
+@pytest.mark.parametrize("value", [[], [""], ["ETHUSDT", 1], {"a": "b"}])
+def test_pair_alias_rejects_bad_lists(valid_yaml: str, value: object) -> None:
+    doc = yaml.safe_load(valid_yaml)
+    doc["aliases"]["pairs"]["ETH/USDT"] = value
     with pytest.raises(ConfigError, match=r"aliases\.pairs\.ETH/USDT: expected a non-empty string"):
         parse(dump(doc))
 

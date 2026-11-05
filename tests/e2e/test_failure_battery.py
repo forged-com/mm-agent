@@ -88,7 +88,7 @@ def test_missing_alias_fails_only_that_job(
         "quote": None,
         "source_asset": None,
         "source_venue": None,
-        "source_pair": None,
+        "source_pairs": None,
     }
     assert receipt["files"] == {} and receipt["query_ms"] == 0
     for job in (BTC, ETH):
