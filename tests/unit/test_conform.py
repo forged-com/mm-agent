@@ -30,10 +30,22 @@ ONE_HOUR = ("--from", "2026-10-17T12:00Z", "--to", "2026-10-17T13:00Z")
 
 def database(path: Path, orders: list[tuple[Any, ...]] = ORDERS, fills: list[tuple[Any, ...]] = FILLS) -> Path:
     with sqlite3.connect(path) as connection:
-        connection.execute("create table orders (order_id, side, price, orig_qty, created_at, closed_at)")
-        connection.executemany("insert into orders values (?, ?, ?, ?, ?, ?)", orders)
-        connection.execute("create table fills (order_id, exec_time, px, qty, side)")
-        connection.executemany("insert into fills values (?, ?, ?, ?, ?)", fills)
+        connection.execute(
+            "create table orders (order_id, side, price, orig_qty, created_at, closed_at,"
+            " venue default 'BINANCE_SPOT', symbol default 'ETHUSDT')"
+        )
+        connection.executemany(
+            "insert into orders (order_id, side, price, orig_qty, created_at, closed_at)"
+            " values (?, ?, ?, ?, ?, ?)",
+            orders,
+        )
+        connection.execute(
+            "create table fills (order_id, exec_time, px, qty, side,"
+            " venue default 'BINANCE_SPOT', symbol default 'ETHUSDT')"
+        )
+        connection.executemany(
+            "insert into fills (order_id, exec_time, px, qty, side) values (?, ?, ?, ?, ?)", fills
+        )
     return path
 
 
@@ -120,6 +132,23 @@ def test_sentinels_and_orphans_are_reported(
     assert lines[-1] == "conformance FAIL: 3 of 7 check(s) failed"
 
 
+def test_fill_on_another_venue_does_not_reference_the_order(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    db = database(tmp_path / "oms.db")
+    with sqlite3.connect(db) as connection:
+        connection.execute("update fills set venue = 'OKX' where order_id = 'o2'")
+    yaml = WINDOWED_YAML.format(url="https://control.invalid", db=db)
+    code, lines = conform(tmp_path, yaml, *ONE_HOUR, monkeypatch=monkeypatch, capsys=capsys)
+    assert code == 1
+    assert [line for line in verdicts(lines) if line.startswith("FAIL ")] == [
+        (
+            "FAIL every fill references an order in the pull: 1 row(s) referencing no order in the pull,"
+            f" first fill of order 'o2' ts={NOON + 40 * 60_000}"
+        )
+    ]
+
+
 def test_empty_fills_fail_the_count_check(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
@@ -161,12 +190,12 @@ def test_failed_job_reports_only_that_it_did_not_land(
 def test_no_jobs_is_a_fail(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    yaml = WINDOWED_YAML.replace("pairs: {{ETH/USDT: ETHUSDT}}", "pairs: {{}}")
+    yaml = WINDOWED_YAML.replace("assets: {{ETH: ETH}}", "assets: {{}}")
     yaml = yaml.format(url="https://control.invalid", db=database(tmp_path / "oms.db"))
     code, lines = conform(tmp_path, yaml, *ONE_HOUR, monkeypatch=monkeypatch, capsys=capsys)
     assert code == 1
     assert verdicts(lines) == []
-    assert lines[-1] == "conformance FAIL: no jobs; configure at least one pair and one venue"
+    assert lines[-1] == "conformance FAIL: no jobs; configure at least one asset"
 
 
 def test_short_window_is_a_usage_error(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:

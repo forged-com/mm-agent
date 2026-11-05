@@ -4,24 +4,24 @@
     "to": 1792969200000
   },
   "files": {
-    "BTC/USDT@binance": {
+    "BTC": {
       "orders.mapped": {
         "rows": 16,
-        "sha256": "03bedd78e2a9a8abb713f9c9637b8b48d50d11c1cd2456455f22c144c657b1ce"
+        "sha256": "1b99117c33ec82fbe0d2748fc3959bd258183e4ae9708fee35f485e4484f186c"
       },
       "fills.mapped": {
         "rows": 15,
-        "sha256": "6d996171a3a074bd36708d23ccca2b6ebef505ca2db620f52b1dd897f8ab2cb3"
+        "sha256": "5f836a8d0d5acea6275065a6358a7cef302247e8e6efadea6867f988142ab7d2"
       }
     },
-    "ETH/USDT@binance": {
+    "ETH": {
       "orders.mapped": {
         "rows": 16,
-        "sha256": "999c68b311ac39019502f4e644e92cccfca49fa6471e6a28004a755edc6ed88d"
+        "sha256": "0e4a0a19d0b047a8184f73c2b88394636e37a72d82bb80208126aa9af5da9007"
       },
       "fills.mapped": {
         "rows": 15,
-        "sha256": "eac1695ea1a5994dd28a0a8d28b0e7f3d67ab7015ff843c1836e618d517f48ea"
+        "sha256": "10ac9e4ac9c36f8f9cdd38035bae2011709b04d3bd97eb55c63fb4212aa615f5"
       }
     }
   }

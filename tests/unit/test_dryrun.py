@@ -60,14 +60,11 @@ def test_window_combinations() -> None:
         window("--dry-run", NOON, NOON, None)
 
 
-def test_jobs_cover_every_pair_on_every_venue(valid_yaml: str) -> None:
-    yaml = valid_yaml.replace("venues: {binance: BINANCE_SPOT}", "venues: {okx: OKX, binance: BINANCE_SPOT}")
-    yaml = yaml.replace("pairs: {ETH/USDT: ETHUSDT}", "pairs: {ETH/USDT: ETHUSDT, BTC/USDT: BTCUSDT}")
+def test_jobs_dump_every_configured_asset(valid_yaml: str) -> None:
+    yaml = valid_yaml.replace("assets: {ETH: ETH}", "assets: {ETH: ETH, BTC: XBT}")
     assert jobs(parse(yaml), NOON, NOON + HOUR) == [
-        Job(NOON, NOON + HOUR, "BTC/USDT", "binance"),
-        Job(NOON, NOON + HOUR, "BTC/USDT", "okx"),
-        Job(NOON, NOON + HOUR, "ETH/USDT", "binance"),
-        Job(NOON, NOON + HOUR, "ETH/USDT", "okx"),
+        Job(NOON, NOON + HOUR, "BTC"),
+        Job(NOON, NOON + HOUR, "ETH"),
     ]
 
 
@@ -82,20 +79,19 @@ def test_dry_run_prints_the_report_without_touching_the_network(
     assert lines[0].startswith("forgd-mm-agent ") and lines[0].endswith(" dry run for acme")
     assert lines[2] == "source sqlite, timezone UTC"
     assert lines[3] == f"window [2026-10-17T00:00:00Z, 2026-10-18T00:00:00Z) = [{MIDNIGHT}, {MIDNIGHT + DAY})"
-    assert lines[4] == "1 job(s): every configured pair on every configured venue"
-    assert "job ETH/USDT on binance" in lines
-    assert "  pair ETH/USDT -> ETHUSDT" in lines
-    assert "  venue binance -> BINANCE_SPOT" in lines
+    assert lines[4] == "1 job(s): every configured asset, all venues and quotes"
+    assert "job ETH all/all" in lines
+    assert "  asset ETH -> ETH" in lines
     assert "    select * from orders" in lines
     assert "    :from = 2026-10-17T00:00:00 (UTC)" in lines
     assert "    :to_utc = 2026-10-18T00:00:00+00:00" in lines
-    assert "    :pair = 'ETHUSDT'" in lines
-    assert "    :venue = 'BINANCE_SPOT'" in lines
+    assert "    :asset = 'ETH'" in lines
+    assert not any(line.startswith(("    :pair", "    :venue")) for line in lines)
     assert any(line.startswith("  orders.raw: 2 row(s), ") and "sha256" in line for line in lines)
     assert any(line.startswith("  fills.mapped: 2 row(s), ") for line in lines)
     assert '    {"order_id":"o1","side":"buy","price":"1850.50","orig_qty":0.25,' in out
     assert (
-        '    {"id":"o1","side":"buy","price":"1850.50","qty":"0.25","placed":1792238400000,"ended":null,"filled":null,"remaining":null}'
+        '    {"id":"o1","venue":"BINANCE_SPOT","pair":"ETHUSDT","side":"buy","price":"1850.50","qty":"0.25","placed":1792238400000,"ended":null,"filled":null,"remaining":null}'
         in lines
     )
     assert "  job receipt (not sent):" in lines
@@ -122,8 +118,10 @@ def test_dry_run_lists_matched_files(
 ) -> None:
     root = tmp_path / "exports"
     root.mkdir()
-    (root / "orders.csv").write_text("order_id,side,price,qty,placed,ended\no1,buy,1,1,2026-10-17T12:00:00Z,\n")
-    (root / "fills.csv").write_text("order_id,ts,price,qty,side\n")
+    (root / "orders.csv").write_text(
+        "order_id,venue,symbol,side,price,qty,placed,ended\no1,BINANCE_SPOT,ETHUSDT,buy,1,1,2026-10-17T12:00:00Z,\n"
+    )
+    (root / "fills.csv").write_text("order_id,venue,symbol,ts,price,qty,side\n")
     yaml = FILES_YAML.format(root=root).replace("query: fills.csv", "query: fills/{from}/*.csv")
     flags = ("--from", "2026-10-17T12:00Z", "--to", "2026-10-17T13:00Z")
     code, out = dry_run(tmp_path, yaml, *flags, monkeypatch=monkeypatch, capsys=capsys)

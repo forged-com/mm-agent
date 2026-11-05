@@ -11,23 +11,34 @@ from mm_agent.control import ControlPlane, job_wire
 from mm_agent.landing import Landed
 from mm_agent.normalise import Normaliser
 from mm_agent.receipts import JobReceipt, RunError, RunReceipt
-from mm_agent.types import Asset, Job
+from mm_agent.types import Job, Resolved
 from tests.conftest import StubControlPlane
 from tests.contract import CONTRACT, NAMES, REGISTRY, SCHEMAS, check
 
 NOON = 1_792_238_400_000
-JOB = Job(start=NOON, end=NOON + 3_600_000, pair="ETH/USDT", venue="binance")
-ASSET = Asset(pair="ETHUSDT", venue="BINANCE_SPOT")
+JOB = Job(start=NOON, end=NOON + 3_600_000, asset="ETH")
+NARROWED = Job(start=NOON, end=NOON + 3_600_000, asset="ETH", venue="binance", quote="USDT")
+RESOLVED = Resolved(asset="ETH", venue="BINANCE_SPOT", pairs=("ETHUSDT",))
 LANDED = Landed("orders.raw", Path("/tmp/x/orders.raw.jsonl.gz"), 12, 345, "a" * 64)
 ORDER_ROW = {
     "order_id": 42,
+    "venue": "BINANCE_SPOT",
+    "symbol": "ETHUSDT",
     "side": "BUY",
     "price": "1850.50",
     "orig_qty": 0.25,
     "created_at": NOON,
     "closed_at": None,
 }
-FILL_ROW = {"order_id": "42", "exec_time": NOON + 1000, "px": 1e-05, "qty": 1, "side": "S"}
+FILL_ROW = {
+    "order_id": "42",
+    "venue": "BINANCE_SPOT",
+    "symbol": "ETHUSDT",
+    "exec_time": NOON + 1000,
+    "px": 1e-05,
+    "qty": 1,
+    "side": "S",
+}
 
 
 def rejects(name: str, instance: Any, pointer: str = "") -> None:
@@ -72,17 +83,23 @@ def test_check_in_payload(stub: StubControlPlane) -> None:
 
 def test_job_wire() -> None:
     check("job", job_wire(JOB))
+    check("job", job_wire(NARROWED))
+    rejects("job", {key: value for key, value in job_wire(JOB).items() if key != "venue"})
+    rejects("job", {key: value for key, value in job_wire(JOB).items() if key != "quote"})
+    rejects("job", {**job_wire(JOB), "venue": ""})
+    rejects("job", {**job_wire(JOB), "quote": ""})
+    rejects("job", {**job_wire(JOB), "asset": None})
     rejects("job", {**job_wire(JOB), "extra": 1})
     rejects("job", {**job_wire(JOB), "from": str(NOON)})
-    rejects("job", {**job_wire(JOB), "pair": ""})
+    rejects("job", {**job_wire(JOB), "asset": ""})
 
 
 def test_jobs_response_round_trips(stub: StubControlPlane) -> None:
-    body = {"jobs": [job_wire(JOB), {**job_wire(JOB), "pair": "BTC/USDT"}]}
+    body = {"jobs": [job_wire(JOB), job_wire(NARROWED)]}
     check("jobs", body)
     check("jobs", {"jobs": []})
     stub.respond("/jobs", 200, body)
-    assert ControlPlane(stub.url, "t").jobs() == [JOB, Job(JOB.start, JOB.end, "BTC/USDT", "binance")]
+    assert ControlPlane(stub.url, "t").jobs() == [JOB, NARROWED]
     rejects("jobs", {"jobs": [{"from": NOON, "to": NOON + 1}]})
     rejects("jobs", {})
 
@@ -99,21 +116,21 @@ def test_upload_url_request_and_response(stub: StubControlPlane) -> None:
 
 
 def test_job_receipt_ok() -> None:
-    check("receipt", JobReceipt(JOB, ASSET, (LANDED,), query_ms=42, warnings=("slow",)).wire())
+    check("receipt", JobReceipt(JOB, RESOLVED, (LANDED,), query_ms=42, warnings=("slow",)).wire())
 
 
 def test_job_receipt_failed() -> None:
     check("receipt", JobReceipt(JOB, None, (), query_ms=0, error="no alias").wire())
-    check("receipt", JobReceipt(JOB, ASSET, (LANDED,), query_ms=7, error="cursor died").wire())
+    check("receipt", JobReceipt(JOB, RESOLVED, (LANDED,), query_ms=7, error="cursor died").wire())
 
 
 def test_job_receipt_status_and_error_must_agree() -> None:
-    rejects("receipt", {**JobReceipt(JOB, ASSET, (), query_ms=1).wire(), "error": "boom"})
-    rejects("receipt", {**JobReceipt(JOB, ASSET, (), query_ms=1, error="boom").wire(), "error": None})
+    rejects("receipt", {**JobReceipt(JOB, RESOLVED, (), query_ms=1).wire(), "error": "boom"})
+    rejects("receipt", {**JobReceipt(JOB, RESOLVED, (), query_ms=1, error="boom").wire(), "error": None})
 
 
 def test_job_receipt_rejects_bad_files() -> None:
-    wire = JobReceipt(JOB, ASSET, (LANDED,), query_ms=1).wire()
+    wire = JobReceipt(JOB, RESOLVED, (LANDED,), query_ms=1).wire()
     rejects("receipt", {**wire, "files": {"orders.jsonl": wire["files"]["orders.raw"]}})
     rejects("receipt", {**wire, "files": {"orders.raw": {**wire["files"]["orders.raw"], "sha256": "A" * 64}}})
     rejects("receipt", {**wire, "files": {"orders.raw": {"rows": 1, "bytes": 1}}})
@@ -129,7 +146,7 @@ def test_run_receipt() -> None:
 
 
 def test_receipt_rejects_unknown_kind() -> None:
-    rejects("receipt", {**JobReceipt(JOB, ASSET, (), query_ms=1).wire(), "kind": "batch"})
+    rejects("receipt", {**JobReceipt(JOB, RESOLVED, (), query_ms=1).wire(), "kind": "batch"})
     rejects("receipt", {})
 
 
@@ -153,6 +170,10 @@ def test_mapped_rows(valid_yaml: str) -> None:
         ("order", {"placed": "2026-10-17T12:00:00Z"}),
         ("order", {"ended": "open"}),
         ("order", {"id": ""}),
+        ("order", {"venue": ""}),
+        ("order", {"pair": ""}),
+        ("fill", {"venue": ""}),
+        ("fill", {"pair": ""}),
         ("order", {"filled": 1.5}),
         ("order", {"remaining": "lots"}),
         ("fill", {"id": "abc"}),

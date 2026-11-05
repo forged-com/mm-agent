@@ -14,13 +14,13 @@ from tests.e2e.fake_landing import FakeLanding
 from tests.e2e.test_happy_path import IMAGE_DIGEST, NAMES, configured, object_key
 from tests.fixtures import golden
 
-FILLS_SELECT = "select order_id, exec_time, px, qty, side"
+FILLS_SELECT = "select order_id, venue, symbol, exec_time, px, qty, side"
 POISONED_SELECT = (
     f"{FILLS_SELECT}, abs(case when row_number() over (order by exec_time, order_id) = 4"
     " then -9223372036854775808 else 0 end) as poison"
 )
 BTC, ETH = golden.jobs()
-STRANGER = Job(golden.START, golden.END, "ETH/USDT", "okx")
+STRANGER = Job(golden.START, golden.END, "ETH", "okx")
 ORDERS = ("orders.raw", "orders.mapped")
 
 
@@ -35,7 +35,7 @@ def job_receipt(control: FakeControlPlane, job: Job) -> dict[str, Any]:
     return next(
         r
         for r in control.receipts
-        if r["kind"] == "job" and (r["asset"]["pair"], r["asset"]["venue"]) == (job.pair, job.venue)
+        if r["kind"] == "job" and (r["target"]["asset"], r["target"]["venue"]) == (job.asset, job.venue)
     )
 
 
@@ -67,7 +67,7 @@ def test_db_dying_mid_cursor_fails_the_job_with_no_files(
         assert receipt["status"] == "failed"
         assert receipt["error"].startswith("sqlite query failed: ") and "integer overflow" in receipt["error"]
         assert receipt["files"] == {}
-        assert receipt["asset"]["source_pair"] == golden.PAIRS[job.pair]
+        assert receipt["target"]["source_asset"] == golden.ASSETS[job.asset]
     assert control.uploads == [] and landing.objects == {}
     assert run_receipt["jobs"] == {"attempted": 2, "succeeded": 0, "failed": 2}
     assert [e["job"] for e in run_receipt["errors"]] == [job_wire(BTC), job_wire(ETH)]
@@ -82,7 +82,14 @@ def test_missing_alias_fails_only_that_job(
     run_receipt = tick(cfg, config_hash, control)
     receipt = job_receipt(control, STRANGER)
     assert receipt["status"] == "failed" and receipt["error"] == "no alias for venue 'okx'"
-    assert receipt["asset"] == {"pair": "ETH/USDT", "venue": "okx", "source_pair": None, "source_venue": None}
+    assert receipt["target"] == {
+        "asset": "ETH",
+        "venue": "okx",
+        "quote": None,
+        "source_asset": None,
+        "source_venue": None,
+        "source_pairs": None,
+    }
     assert receipt["files"] == {} and receipt["query_ms"] == 0
     for job in (BTC, ETH):
         assert job_receipt(control, job)["status"] == "ok"
@@ -129,7 +136,7 @@ def test_expired_url_keeps_only_files_already_put(
         assert file["bytes"] == len(stored.body)
         assert file["sha256"] == hashlib.sha256(gzip.decompress(stored.body)).hexdigest()
     assert landed(landing, ETH) == sorted(ORDERS) and landed(landing, BTC) == sorted(NAMES)
-    assert [u["name"] for u in control.uploads if u["pair"] == ETH.pair] == [
+    assert [u["name"] for u in control.uploads if u["asset"] == ETH.asset] == [
         "orders.raw",
         "orders.mapped",
         "fills.raw",

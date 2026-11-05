@@ -1,5 +1,6 @@
 import gzip
 import hashlib
+import json
 import logging
 import sqlite3
 from pathlib import Path
@@ -13,13 +14,14 @@ from mm_agent.config import parse
 from mm_agent.constants import TICK_SECONDS, TOKEN_ENV
 from mm_agent.control import ControlPlane, job_wire
 from mm_agent.landing import Landed
-from mm_agent.types import Asset, Config, ConfigError, ControlError, Job, LandingError
+from mm_agent.normalise import resolve
+from mm_agent.types import Config, ConfigError, ControlError, Job, LandingError, Resolved
 from tests.conftest import Call, StubControlPlane
 
 NOON = 1_792_238_400_000
 HOUR = 3_600_000
-JOB = Job(start=NOON, end=NOON + HOUR, pair="ETH/USDT", venue="binance")
-ASSET = Asset(pair="ETHUSDT", venue="BINANCE_SPOT")
+JOB = Job(start=NOON, end=NOON + HOUR, asset="ETH")
+RESOLVED = Resolved(asset="ETH")
 ORDERS = [
     ("o1", "buy", "1850.50", 0.25, "2026-10-17 12:00:00", None),
     ("o2", "sell", "1851", 1, "2026-10-17 12:30:00", "2026-10-17 12:45:00"),
@@ -36,14 +38,15 @@ source:
   kind: sqlite
   dsn: sqlite:///{db}
 aliases:
-  venues: {{binance: BINANCE_SPOT}}
-  pairs: {{ETH/USDT: ETHUSDT}}
+  assets: {{ETH: ETH}}
+  venues: {{binance: BINANCE_SPOT, okx: OKX}}
+  pairs: {{ETH/USDT: ETHUSDT, ETH/USDC: ETHUSDC}}
 orders:
   query: select * from orders
-  map: {{id: order_id, side: side, price: price, qty: orig_qty, placed: created_at, ended: closed_at}}
+  map: {{id: order_id, venue: venue, pair: symbol, side: side, price: price, qty: orig_qty, placed: created_at, ended: closed_at}}
 fills:
   query: select * from fills
-  map: {{order: order_id, ts: exec_time, price: px, qty: qty, side: side}}
+  map: {{venue: venue, pair: symbol, order: order_id, ts: exec_time, price: px, qty: qty, side: side}}
 """
 FILES_YAML = """
 mm: acme
@@ -53,23 +56,36 @@ source:
   kind: files
   dsn: {root}
 aliases:
-  venues: {{binance: BINANCE_SPOT}}
-  pairs: {{ETH/USDT: ETHUSDT}}
+  assets: {{ETH: ETH}}
+  venues: {{binance: BINANCE_SPOT, okx: OKX}}
+  pairs: {{ETH/USDT: ETHUSDT, ETH/USDC: ETHUSDC}}
 orders:
   query: orders.csv
-  map: {{id: order_id, side: side, price: price, qty: qty, placed: placed, ended: ended}}
+  map: {{id: order_id, venue: venue, pair: symbol, side: side, price: price, qty: qty, placed: placed, ended: ended}}
 fills:
   query: fills.csv
-  map: {{order: order_id, ts: ts, price: price, qty: qty, side: side}}
+  map: {{venue: venue, pair: symbol, order: order_id, ts: ts, price: price, qty: qty, side: side}}
 """
 
 
 def database(path: Path, orders: list[tuple[Any, ...]] = ORDERS) -> Path:
     with sqlite3.connect(path) as connection:
-        connection.execute("create table orders (order_id, side, price, orig_qty, created_at, closed_at)")
-        connection.executemany("insert into orders values (?, ?, ?, ?, ?, ?)", orders)
-        connection.execute("create table fills (order_id, exec_time, px, qty, side)")
-        connection.executemany("insert into fills values (?, ?, ?, ?, ?)", FILLS)
+        connection.execute(
+            "create table orders (order_id, side, price, orig_qty, created_at, closed_at,"
+            " venue default 'BINANCE_SPOT', symbol default 'ETHUSDT')"
+        )
+        connection.executemany(
+            "insert into orders (order_id, side, price, orig_qty, created_at, closed_at)"
+            " values (?, ?, ?, ?, ?, ?)",
+            orders,
+        )
+        connection.execute(
+            "create table fills (order_id, exec_time, px, qty, side,"
+            " venue default 'BINANCE_SPOT', symbol default 'ETHUSDT')"
+        )
+        connection.executemany(
+            "insert into fills (order_id, exec_time, px, qty, side) values (?, ?, ?, ?, ?)", FILLS
+        )
     return path
 
 
@@ -117,11 +133,13 @@ def test_run_happy_path(stub: StubControlPlane, cfg: Config, control: ControlPla
     job, final = (c.body for c in receipts(stub))
     assert job["kind"] == "job"
     assert job["status"] == "ok"
-    assert job["asset"] == {
-        "pair": "ETH/USDT",
-        "venue": "binance",
-        "source_pair": "ETHUSDT",
-        "source_venue": "BINANCE_SPOT",
+    assert job["target"] == {
+        "asset": "ETH",
+        "venue": None,
+        "quote": None,
+        "source_asset": "ETH",
+        "source_venue": None,
+        "source_pairs": None,
     }
     assert {name: f["rows"] for name, f in job["files"].items()} == {
         "orders.raw": 2,
@@ -147,7 +165,7 @@ def test_put_bodies_match_receipt_hashes(stub: StubControlPlane, cfg: Config, co
     mapped = gzip.decompress(puts[1].body).decode().splitlines()
     assert (
         mapped[0]
-        == '{"id":"o1","side":"buy","price":"1850.50","qty":"0.25","placed":1792238400000,"ended":null,"filled":null,"remaining":null}'
+        == '{"id":"o1","venue":"BINANCE_SPOT","pair":"ETHUSDT","side":"buy","price":"1850.50","qty":"0.25","placed":1792238400000,"ended":null,"filled":null,"remaining":null}'
     )
 
 
@@ -169,17 +187,17 @@ def test_check_in_failure_aborts_run(stub: StubControlPlane, cfg: Config, contro
 def test_missing_alias_fails_job_without_fetching(
     stub: StubControlPlane, cfg: Config, control: ControlPlane
 ) -> None:
-    unknown = Job(start=NOON, end=NOON + HOUR, pair="ETH/USDT", venue="okx")
+    unknown = Job(start=NOON, end=NOON + HOUR, asset="ETH", venue="kraken")
     stub.respond("/jobs", 200, {"jobs": [job_wire(unknown)]})
     receipt = run(cfg, control, "abc", None)
     assert paths(stub) == ["POST /check_in", "GET /jobs", "POST /receipt", "POST /receipt"]
     job, final = (c.body for c in receipts(stub))
     assert job["status"] == "failed"
-    assert job["error"] == "no alias for venue 'okx'"
-    assert job["asset"]["source_venue"] is None
+    assert job["error"] == "no alias for venue 'kraken'"
+    assert job["target"]["source_asset"] is None
     assert job["files"] == {}
     assert final["jobs"] == {"attempted": 1, "succeeded": 0, "failed": 1}
-    assert final["errors"] == [{"job": job_wire(unknown), "error": "no alias for venue 'okx'"}]
+    assert final["errors"] == [{"job": job_wire(unknown), "error": "no alias for venue 'kraken'"}]
     assert receipt.failed == 1
 
 
@@ -194,7 +212,7 @@ def test_normalise_error_fails_job_with_no_files(
     assert job["status"] == "failed"
     assert job["error"] == "orders.side (side): unknown side 'hold'"
     assert job["files"] == {}
-    assert job["asset"]["source_pair"] == "ETHUSDT"
+    assert job["target"]["source_asset"] == "ETH"
 
 
 def test_driver_error_fails_job(stub: StubControlPlane, cfg: Config, control: ControlPlane) -> None:
@@ -242,8 +260,8 @@ def test_unexpected_error_fails_the_job_with_a_receipt(
     assert paths(stub) == ["POST /receipt"]
     assert stub.calls[0].body["status"] == "failed"
     assert stub.calls[0].body["error"] == "RuntimeError: boom"
-    assert stub.calls[0].body["asset"]["source_pair"] == "ETHUSDT"
-    assert stub.calls[0].body["asset"]["source_venue"] == "BINANCE_SPOT"
+    assert stub.calls[0].body["target"]["source_asset"] == "ETH"
+    assert stub.calls[0].body["target"]["source_venue"] is None
 
 
 def test_unexpected_error_during_put_keeps_files_already_landed(
@@ -258,7 +276,7 @@ def test_unexpected_error_during_put_keeps_files_already_landed(
 
     receipt = land(cfg, JOB, deliver)
     assert receipt.error == "RuntimeError: boom"
-    assert receipt.asset is not None
+    assert receipt.resolved is not None
     assert [f.name for f in receipt.files] == ["orders.raw", "orders.mapped"]
     assert "crashed" in caplog.text
     assert "Traceback" in caplog.text
@@ -281,21 +299,23 @@ def test_undeliverable_job_receipt_counts_as_error(
 
 def test_undeliverable_receipt_keeps_job_error(stub: StubControlPlane, cfg: Config, control: ControlPlane) -> None:
     stub.respond("/receipt", 500, raw=b"down")
-    unknown = Job(start=NOON, end=NOON + HOUR, pair="BTC/USDT", venue="binance")
-    assert process(cfg, control, unknown) == "no alias for pair 'BTC/USDT'; POST /receipt: HTTP 500: down"
+    unknown = Job(start=NOON, end=NOON + HOUR, asset="BTC")
+    assert process(cfg, control, unknown) == "no alias for asset 'BTC'; POST /receipt: HTTP 500: down"
 
 
 def test_fetch_from_files_applies_window_filter(tmp_path: Path) -> None:
     (tmp_path / "orders.csv").write_text(
-        "order_id,side,price,qty,placed,ended\n"
-        "o1,buy,1,1,2026-10-17T12:00:00Z,\n"
-        "o2,sell,1,1,2026-10-17T13:00:00Z,\n"
+        "order_id,venue,symbol,side,price,qty,placed,ended\n"
+        "o1,BINANCE_SPOT,ETHUSDT,buy,1,1,2026-10-17T12:00:00Z,\n"
+        "o2,BINANCE_SPOT,ETHUSDT,sell,1,1,2026-10-17T13:00:00Z,\n"
     )
     (tmp_path / "fills.csv").write_text(
-        "order_id,ts,price,qty,side\no1,2026-10-17T12:59:59Z,1,1,buy\no2,2026-10-17T13:00:00Z,1,1,sell\n"
+        "order_id,venue,symbol,ts,price,qty,side\n"
+        "o1,BINANCE_SPOT,ETHUSDT,2026-10-17T12:59:59Z,1,1,buy\n"
+        "o2,BINANCE_SPOT,ETHUSDT,2026-10-17T13:00:00Z,1,1,sell\n"
     )
     cfg = parse(FILES_YAML.format(root=tmp_path))
-    spooled = fetch(cfg, JOB, ASSET, tmp_path)
+    spooled = fetch(cfg, JOB, RESOLVED, tmp_path)
     assert {f.name: f.rows for f in spooled} == {
         "orders.raw": 1,
         "orders.mapped": 1,
@@ -305,9 +325,79 @@ def test_fetch_from_files_applies_window_filter(tmp_path: Path) -> None:
 
 
 def test_fetch_from_sql_keeps_every_cursor_row(cfg: Config, tmp_path: Path) -> None:
-    spooled = fetch(cfg, JOB, ASSET, tmp_path)
+    spooled = fetch(cfg, JOB, RESOLVED, tmp_path)
     assert [f.rows for f in spooled] == [2, 2, 2, 2]
     assert [f.name for f in spooled] == ["orders.raw", "orders.mapped", "fills.raw", "fills.mapped"]
+
+
+MARKETS = [
+    ("o1", "BINANCE_SPOT", "ETHUSDT"),
+    ("o2", "BINANCE_SPOT", "ETHUSDC"),
+    ("o3", "OKX", "ETHUSDT"),
+    ("o4", "OKX", "ETHUSDC"),
+]
+NARROWING = [
+    (None, None, ["o1", "o2", "o3", "o4"]),
+    ("binance", None, ["o1", "o2"]),
+    (None, "USDT", ["o1", "o3"]),
+    ("okx", "USDC", ["o4"]),
+    ("binance", "USDT", ["o1"]),
+]
+
+
+def multi_market_database(path: Path) -> Path:
+    with sqlite3.connect(path) as connection:
+        connection.execute(
+            "create table orders (order_id, venue, symbol, side, price, orig_qty, created_at, closed_at)"
+        )
+        connection.executemany(
+            "insert into orders values (?, ?, ?, 'buy', '1', '1', '2026-10-17 12:00:00', null)", MARKETS
+        )
+        connection.execute("create table fills (order_id, venue, symbol, exec_time, px, qty, side)")
+        connection.executemany(
+            "insert into fills values (?, ?, ?, '2026-10-17 12:10:00', '1', '1', 'buy')", MARKETS
+        )
+    return path
+
+
+def mapped_ids(spooled: tuple[Landed, ...], name: str, column: str) -> list[str]:
+    file = next(f for f in spooled if f.name == name)
+    with gzip.open(file.path, "rt", encoding="utf-8") as handle:
+        return [json.loads(line)[column] for line in handle]
+
+
+@pytest.mark.parametrize(("venue", "quote", "expected"), NARROWING)
+def test_sql_job_lands_only_its_venue_and_quote(
+    stub: StubControlPlane, tmp_path: Path, venue: str | None, quote: str | None, expected: list[str]
+) -> None:
+    cfg = parse(YAML.format(url=stub.url, db=multi_market_database(tmp_path / "oms.db")))
+    job = Job(NOON, NOON + HOUR, "ETH", venue, quote)
+    spooled = fetch(cfg, job, resolve(cfg.aliases, job), tmp_path)
+    assert mapped_ids(spooled, "orders.mapped", "id") == expected
+    assert mapped_ids(spooled, "orders.raw", "order_id") == expected
+    assert mapped_ids(spooled, "fills.mapped", "order") == expected
+    assert mapped_ids(spooled, "fills.raw", "order_id") == expected
+
+
+@pytest.mark.parametrize(("venue", "quote", "expected"), NARROWING)
+def test_files_job_lands_only_its_venue_and_quote(
+    tmp_path: Path, venue: str | None, quote: str | None, expected: list[str]
+) -> None:
+    (tmp_path / "orders.csv").write_text(
+        "order_id,venue,symbol,side,price,qty,placed,ended\n"
+        + "".join(f"{o},{v},{s},buy,1,1,2026-10-17T12:00:00Z,\n" for o, v, s in MARKETS)
+    )
+    (tmp_path / "fills.csv").write_text(
+        "order_id,venue,symbol,ts,price,qty,side\n"
+        + "".join(f"{o},{v},{s},2026-10-17T12:10:00Z,1,1,buy\n" for o, v, s in MARKETS)
+    )
+    cfg = parse(FILES_YAML.format(root=tmp_path))
+    job = Job(NOON, NOON + HOUR, "ETH", venue, quote)
+    spooled = fetch(cfg, job, resolve(cfg.aliases, job), tmp_path)
+    assert mapped_ids(spooled, "orders.mapped", "id") == expected
+    assert mapped_ids(spooled, "orders.raw", "order_id") == expected
+    assert mapped_ids(spooled, "fills.mapped", "order") == expected
+    assert mapped_ids(spooled, "fills.raw", "order_id") == expected
 
 
 def test_load_hashes_file_bytes(tmp_path: Path, valid_yaml: str) -> None:

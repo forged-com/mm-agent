@@ -15,6 +15,7 @@ ORDER_COLUMNS = (
     "order_id",
     "venue",
     "symbol",
+    "base",
     "side",
     "price",
     "orig_qty",
@@ -23,20 +24,21 @@ ORDER_COLUMNS = (
     "filled_qty",
     "remaining_qty",
 )
-FILL_COLUMNS = ("order_id", "venue", "symbol", "exec_time", "px", "qty", "side")
+FILL_COLUMNS = ("order_id", "venue", "symbol", "base", "exec_time", "px", "qty", "side")
 POSTGRES_DDL = (
     "drop table if exists orders",
     "drop table if exists fills",
     """
     create table orders (
-      order_id text primary key, venue text not null, symbol text not null, side text not null,
+      order_id text primary key, venue text not null, symbol text not null, base text not null, side text not null,
       price numeric(18,2) not null, orig_qty numeric(18,4) not null,
       created_at timestamptz not null, closed_at timestamptz,
       filled_qty numeric(18,4), remaining_qty numeric(18,4))
     """,
     """
     create table fills (
-      order_id text not null, venue text not null, symbol text not null, exec_time timestamptz not null,
+      order_id text not null, venue text not null, symbol text not null, base text not null,
+      exec_time timestamptz not null,
       px numeric(18,2) not null, qty numeric(18,4) not null, side text not null)
     """,
 )
@@ -45,14 +47,14 @@ MYSQL_DDL = (
     "drop table if exists fills",
     """
     create table orders (
-      order_id varchar(32) primary key, venue varchar(32) not null, symbol varchar(32) not null,
+      order_id varchar(32) primary key, venue varchar(32) not null, symbol varchar(32) not null, base varchar(32) not null,
       side varchar(8) not null, price decimal(18,2) not null, orig_qty decimal(18,4) not null,
       created_at datetime(3) not null, closed_at datetime(3) null,
       filled_qty decimal(18,4) null, remaining_qty decimal(18,4) null)
     """,
     """
     create table fills (
-      order_id varchar(32) not null, venue varchar(32) not null, symbol varchar(32) not null,
+      order_id varchar(32) not null, venue varchar(32) not null, symbol varchar(32) not null, base varchar(32) not null,
       exec_time datetime(3) not null, px decimal(18,2) not null, qty decimal(18,4) not null,
       side varchar(8) not null)
     """,
@@ -62,7 +64,7 @@ CLICKHOUSE_DDL = (
     "drop table if exists fills",
     """
     create table orders (
-      order_id String, venue String, symbol String, side Int8,
+      order_id String, venue String, symbol String, base String, side Int8,
       price Decimal(18,2), orig_qty Decimal(18,4),
       created_at DateTime64(3, 'UTC'), closed_at Nullable(DateTime64(3, 'UTC')),
       filled_qty Nullable(Decimal(18,4)), remaining_qty Nullable(Decimal(18,4)))
@@ -70,7 +72,7 @@ CLICKHOUSE_DDL = (
     """,
     """
     create table fills (
-      order_id String, venue String, symbol String, exec_time DateTime64(3, 'UTC'),
+      order_id String, venue String, symbol String, base String, exec_time DateTime64(3, 'UTC'),
       px Decimal(18,2), qty Decimal(18,4), side Int8)
     engine = MergeTree order by (venue, symbol, exec_time, order_id)
     """,
@@ -80,10 +82,10 @@ SQLITE_DDL = (
     "drop table if exists fills",
     """
     create table orders (
-      order_id text, venue text, symbol text, side text, price text, orig_qty text,
+      order_id text, venue text, symbol text, base text, side text, price text, orig_qty text,
       created_at text, closed_at text, filled_qty text, remaining_qty text)
     """,
-    "create table fills (order_id text, venue text, symbol text, exec_time text, px text, qty text, side text)",
+    "create table fills (order_id text, venue text, symbol text, base text, exec_time text, px text, qty text, side text)",
 )
 HUMMINGBOT_DDL = (
     'drop table if exists "Order"',
@@ -176,8 +178,8 @@ def hummingbot(path: Path) -> str:
 
 def files(root: Path) -> None:
     for table, columns, rows in _tables(_iso_text, SIDES["files"]):
-        for (venue, symbol), group in _grouped(rows).items():
-            path = root / table / venue / f"{symbol}.csv"
+        for (base, venue, symbol), group in _grouped(rows).items():
+            path = root / table / base / venue / f"{symbol}.csv"
             path.parent.mkdir(parents=True, exist_ok=True)
             with path.open("w", newline="") as handle:
                 writer = csv.DictWriter(handle, fieldnames=columns)
@@ -215,6 +217,7 @@ def _order_row(row: dict[str, Any], stamp: Callable[[int], Any], sides: dict[str
         "order_id": row["id"],
         "venue": golden.VENUES[row["venue"]],
         "symbol": golden.PAIRS[row["pair"]],
+        "base": golden.ASSETS[golden.asset_of(row)],
         "side": sides[row["side"]],
         "price": row["price"],
         "orig_qty": row["qty"],
@@ -230,6 +233,7 @@ def _fill_row(row: dict[str, Any], stamp: Callable[[int], Any], sides: dict[str,
         "order_id": row["order"],
         "venue": golden.VENUES[row["venue"]],
         "symbol": golden.PAIRS[row["pair"]],
+        "base": golden.ASSETS[golden.asset_of(row)],
         "exec_time": stamp(row["ts"]),
         "px": row["price"],
         "qty": row["qty"],
@@ -345,10 +349,10 @@ def _scaled(value: str | Decimal) -> int:
     return int(Decimal(value) * HUMMINGBOT_SCALE)
 
 
-def _grouped(rows: list[dict[str, Any]]) -> dict[tuple[str, str], list[dict[str, Any]]]:
-    groups: dict[tuple[str, str], list[dict[str, Any]]] = {}
+def _grouped(rows: list[dict[str, Any]]) -> dict[tuple[str, str, str], list[dict[str, Any]]]:
+    groups: dict[tuple[str, str, str], list[dict[str, Any]]] = {}
     for row in rows:
-        groups.setdefault((row["venue"], row["symbol"]), []).append(row)
+        groups.setdefault((row["base"], row["venue"], row["symbol"]), []).append(row)
     return groups
 
 

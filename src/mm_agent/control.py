@@ -69,14 +69,16 @@ def _job(item: Any) -> Job:
     if not isinstance(item, dict):
         raise ControlError(f"jobs: expected an object, got {type(item).__name__}")
     try:
-        start, end, pair, venue = item["from"], item["to"], item["pair"], item["venue"]
+        start, end, asset, venue, quote = item["from"], item["to"], item["asset"], item["venue"], item["quote"]
     except KeyError as e:
         raise ControlError(f"jobs: job is missing {e}") from e
     if not _millis(start) or not _millis(end) or start >= end:
         raise ControlError(f"jobs: from/to must be epoch ms with 0 <= from < to, got {start!r}, {end!r}")
-    if not isinstance(pair, str) or not isinstance(venue, str):
-        raise ControlError("jobs: pair and venue must be strings")
-    return Job(start=start, end=end, pair=pair, venue=venue)
+    if not isinstance(asset, str):
+        raise ControlError("jobs: asset must be a string")
+    if not isinstance(venue, str | None) or not isinstance(quote, str | None):
+        raise ControlError("jobs: venue and quote must be strings or null")
+    return Job(start=start, end=end, asset=asset, venue=venue, quote=quote)
 
 
 def _millis(value: Any) -> bool:
@@ -84,4 +86,4 @@ def _millis(value: Any) -> bool:
 
 
 def job_wire(job: Job) -> dict[str, Any]:
-    return {"from": job.start, "to": job.end, "pair": job.pair, "venue": job.venue}
+    return {"from": job.start, "to": job.end, "asset": job.asset, "venue": job.venue, "quote": job.quote}

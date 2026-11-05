@@ -10,7 +10,7 @@ from mm_agent.constants import SAMPLE_ROWS, VERDICT_FAIL, VERDICT_PASS
 from mm_agent.drivers import files, sql
 from mm_agent.landing import Landed
 from mm_agent.normalise import resolve
-from mm_agent.types import Asset, Config, DriverError, Job, SourceKind, Table
+from mm_agent.types import Config, DriverError, Job, Resolved, SourceKind, Table
 from mm_agent.utils import instant, millis
 
 
@@ -46,11 +46,7 @@ def window(
 
 
 def jobs(cfg: Config, start: int, end: int) -> list[Job]:
-    return [
-        Job(start=start, end=end, pair=pair, venue=venue)
-        for pair in sorted(cfg.aliases.pairs)
-        for venue in sorted(cfg.aliases.venues)
-    ]
+    return [Job(start=start, end=end, asset=asset) for asset in sorted(cfg.aliases.assets)]
 
 
 class Report:
@@ -65,31 +61,30 @@ class Report:
         self.line(f"config sha256 {config_hash}")
         self.line(f"source {cfg.source.kind.value}, timezone {cfg.source.timezone}")
         self.line(f"window [{stamp(start)}, {stamp(end)}) = [{start}, {end})")
-        self.line(f"{count} job(s): every configured pair on every configured venue")
+        self.line(f"{count} job(s): every configured asset, all venues and quotes")
 
     def job(self, cfg: Config, job: Job) -> None:
-        asset = resolve(cfg.aliases, job)
+        resolved = resolve(cfg.aliases, job)
         self.line()
-        self.line(f"job {job.pair} on {job.venue}")
-        self.line(f"  pair {job.pair} -> {asset.pair}")
-        self.line(f"  venue {job.venue} -> {asset.venue}")
+        self.line(f"job {job.label}")
+        self.line(f"  asset {job.asset} -> {resolved.asset}")
         for name, table in (("orders", cfg.orders), ("fills", cfg.fills)):
             if cfg.source.kind is SourceKind.FILES:
-                self._glob(cfg, name, table, job, asset)
+                self._glob(cfg, name, table, job, resolved)
             else:
-                self._query(cfg, name, table, job, asset)
+                self._query(cfg, name, table, job, resolved)
 
-    def _query(self, cfg: Config, name: str, table: Table, job: Job, asset: Asset) -> None:
+    def _query(self, cfg: Config, name: str, table: Table, job: Job, resolved: Resolved) -> None:
         self.line(f"  {name} query:")
         for text in table.query.strip().splitlines():
             self.line(f"    {text}")
-        for key, value in sql.params(cfg.source, job, asset).items():
+        for key, value in sql.params(cfg.source, job, resolved).items():
             self.line(f"    :{key} = {bound(value, cfg.source.timezone)}")
 
-    def _glob(self, cfg: Config, name: str, table: Table, job: Job, asset: Asset) -> None:
+    def _glob(self, cfg: Config, name: str, table: Table, job: Job, resolved: Resolved) -> None:
         try:
-            glob = files.pattern(cfg.source, table, job, asset)
-            matched = files.files(cfg.source, table, job, asset)
+            glob = files.pattern(cfg.source, table, job, resolved)
+            matched = files.files(cfg.source, table, job, resolved)
         except DriverError as e:
             self.line(f"  {name} files: {e}")
             return

@@ -7,27 +7,26 @@ from typing import Any, TextIO
 from zoneinfo import ZoneInfo
 
 from mm_agent.constants import CSV_SUFFIX, DATE_FORMAT, FILE_ENCODING, GZIP_SUFFIX, JSONL_SUFFIX
-from mm_agent.types import Asset, DriverError, Job, Source, Table
+from mm_agent.types import DriverError, Job, Resolved, Source, Table
 from mm_agent.utils import instant
 
 
-def rows(source: Source, table: Table, job: Job, asset: Asset) -> Iterator[dict[str, Any]]:
-    for path in files(source, table, job, asset):
+def rows(source: Source, table: Table, job: Job, resolved: Resolved) -> Iterator[dict[str, Any]]:
+    for path in files(source, table, job, resolved):
         yield from _read(path)
 
 
-def files(source: Source, table: Table, job: Job, asset: Asset) -> list[Path]:
+def files(source: Source, table: Table, job: Job, resolved: Resolved) -> list[Path]:
     root = Path(source.dsn)
     if not root.is_dir():
         raise DriverError(f"files root {source.dsn!r} is not a directory")
-    return sorted(path for path in root.glob(pattern(source, table, job, asset)) if path.is_file())
+    return sorted(path for path in root.glob(pattern(source, table, job, resolved)) if path.is_file())
 
 
-def pattern(source: Source, table: Table, job: Job, asset: Asset) -> str:
+def pattern(source: Source, table: Table, job: Job, resolved: Resolved) -> str:
     zone = ZoneInfo(source.timezone)
     placeholders = {
-        "pair": asset.pair,
-        "venue": asset.venue,
+        "asset": resolved.asset,
         "from": instant(job.start).astimezone(zone).strftime(DATE_FORMAT),
         "to": instant(job.end).astimezone(zone).strftime(DATE_FORMAT),
     }

@@ -5,13 +5,16 @@ source:
   kind: sqlite
   dsn: sqlite:////data/hummingbot_trades.sqlite   # Hummingbot's trade database, mounted read-only
 aliases:
+  assets: {ETH: ETH}                              # Hummingbot base asset
   venues: {binance: binance}                      # Hummingbot connector name
   pairs: {ETH/USDT: ETH-USDT}                     # Hummingbot trading pair
 orders:
   query: |
-    select id, side, price, amount, creation_timestamp, ended
+    select id, market, symbol, side, price, amount, creation_timestamp, ended
     from (
       select o.id,
+             o.market,
+             o.symbol,
              case when exists (select 1 from OrderStatus s where s.order_id = o.id and s.status = 'BuyOrderCreated')
                   then 'buy' else 'sell' end as side,
              o.price / 1000000.0 as price,
@@ -20,16 +23,16 @@ orders:
              case when o.last_status in ('BuyOrderCompleted', 'SellOrderCompleted', 'OrderCancelled', 'OrderExpired', 'OrderFailure')
                   then o.last_update_timestamp end as ended
       from "Order" o
-      where o.market = :venue and o.symbol = :pair
+      where o.base_asset = :asset
     )
     where creation_timestamp < strftime('%s', :to_utc) * 1000
       and (ended is null or ended >= strftime('%s', :from_utc) * 1000)
-  map: {id: id, side: side, price: price, qty: amount, placed: creation_timestamp, ended: ended}
+  map: {id: id, venue: market, pair: symbol, side: side, price: price, qty: amount, placed: creation_timestamp, ended: ended}
 fills:
   query: |
-    select order_id, timestamp, price / 1000000.0 as price, amount / 1000000.0 as amount, trade_type
+    select market, symbol, order_id, timestamp, price / 1000000.0 as price, amount / 1000000.0 as amount, trade_type
     from TradeFill
-    where market = :venue and symbol = :pair
+    where base_asset = :asset
       and timestamp >= strftime('%s', :from_utc) * 1000
       and timestamp < strftime('%s', :to_utc) * 1000
-  map: {order: order_id, ts: timestamp, price: price, qty: amount, side: trade_type}
+  map: {venue: market, pair: symbol, order: order_id, ts: timestamp, price: price, qty: amount, side: trade_type}

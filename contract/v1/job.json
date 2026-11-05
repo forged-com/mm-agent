@@ -1,15 +1,16 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "Job",
-  "description": "One outstanding landing window. from/to are a half-open UTC window in epoch milliseconds; pair and venue are Forgd canonical strings.",
+  "description": "One outstanding landing window for one asset. from/to are a half-open UTC window in epoch milliseconds; asset, venue and quote are Forgd canonical strings. A null venue or quote means all of them, so both null is a full dump of the asset.",
   "type": "object",
-  "required": ["from", "to", "pair", "venue"],
+  "required": ["from", "to", "asset", "venue", "quote"],
   "additionalProperties": false,
   "properties": {
     "from": {"$ref": "#/$defs/millis"},
     "to": {"$ref": "#/$defs/millis"},
-    "pair": {"type": "string", "minLength": 1},
-    "venue": {"type": "string", "minLength": 1}
+    "asset": {"type": "string", "minLength": 1},
+    "venue": {"type": ["string", "null"], "minLength": 1},
+    "quote": {"type": ["string", "null"], "minLength": 1}
   },
   "$defs": {
     "millis": {"type": "integer", "minimum": 0}

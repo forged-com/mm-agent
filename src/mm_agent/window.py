@@ -1,4 +1,4 @@
-from mm_agent.types import Fill, Job, Order
+from mm_agent.types import Fill, Job, Order, Resolved
 
 
 def holds_order(job: Job, order: Order) -> bool:
@@ -7,3 +7,7 @@ def holds_order(job: Job, order: Order) -> bool:
 
 def holds_fill(job: Job, fill: Fill) -> bool:
     return job.start <= fill.ts < job.end
+
+
+def in_target(resolved: Resolved, record: Order | Fill) -> bool:
+    return resolved.venue in (None, record.venue) and (resolved.pairs is None or record.pair in resolved.pairs)

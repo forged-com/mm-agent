@@ -32,9 +32,9 @@ class FakeControlPlane(Fake):
         self.completed.extend(job_wire(job) for job in jobs)
 
     def object_path(self, request: dict[str, Any]) -> str:
-        pair = request["pair"].replace("/", "-")
+        target = f"{request['asset']}/{request['venue'] or 'all'}/{request['quote'] or 'all'}"
         window = f"{request['from']}-{request['to']}"
-        return f"{self.mm}/{request['venue']}/{pair}/{window}/{request['name']}{OBJECT_SUFFIX}"
+        return f"{self.mm}/{target}/{window}/{request['name']}{OBJECT_SUFFIX}"
 
     def respond(self, method: str, path: str, headers: dict[str, str], body: bytes) -> Reply:
         if headers.get("Authorization") != f"Bearer {self.token}":
@@ -71,6 +71,7 @@ class FakeControlPlane(Fake):
         return 404, {"error": f"no route for {method} {path}"}
 
     def _complete(self, receipt: dict[str, Any]) -> None:
-        done = {**receipt["window"], "pair": receipt["asset"]["pair"], "venue": receipt["asset"]["venue"]}
+        target = receipt["target"]
+        done = {**receipt["window"], "asset": target["asset"], "venue": target["venue"], "quote": target["quote"]}
         self.outstanding = [job for job in self.outstanding if job != done]
         self.completed.append(done)
