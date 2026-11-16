@@ -2,6 +2,8 @@ import csv
 import gzip
 import json
 from collections.abc import Iterator
+from dataclasses import replace
+from datetime import datetime, time, timedelta
 from pathlib import Path
 from typing import Any, TextIO
 from zoneinfo import ZoneInfo
@@ -20,7 +22,19 @@ def files(source: Source, table: Table, job: Job, resolved: Resolved) -> list[Pa
     root = Path(source.dsn)
     if not root.is_dir():
         raise DriverError(f"files root {source.dsn!r} is not a directory")
-    return sorted(path for path in root.glob(pattern(source, table, job, resolved)) if path.is_file())
+    globs = dict.fromkeys(pattern(source, table, part, resolved) for part in local_days(source, job))
+    return sorted({path for glob in globs for path in root.glob(glob) if path.is_file()})
+
+
+def local_days(source: Source, job: Job) -> list[Job]:
+    zone = ZoneInfo(source.timezone)
+    parts, start = [], job.start
+    while start < job.end:
+        day = instant(start).astimezone(zone).date() + timedelta(days=1)
+        midnight = int(datetime.combine(day, time(), zone).timestamp() * 1000)
+        parts.append(replace(job, start=start, end=min(job.end, midnight)))
+        start = parts[-1].end
+    return parts
 
 
 def pattern(source: Source, table: Table, job: Job, resolved: Resolved) -> str:

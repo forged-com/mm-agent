@@ -110,9 +110,9 @@ def test_already_done_job_is_refused_before_any_put(
     run_receipt = tick(cfg, config_hash, control)
     receipt = job_receipt(control, ETH)
     assert receipt["status"] == "failed"
-    assert receipt["error"].startswith("POST /upload_url: HTTP 409") and "job already done" in receipt["error"]
+    assert receipt["error"].startswith("POST /upload_urls: HTTP 409") and "job already done" in receipt["error"]
     assert receipt["files"] == {}
-    assert control.uploads == [{**job_wire(BTC), "name": name} for name in NAMES]
+    assert control.uploads == [job_wire(BTC)]
     assert landed(landing, BTC) == sorted(NAMES) and landed(landing, ETH) == []
     assert run_receipt["jobs"] == {"attempted": 2, "succeeded": 1, "failed": 1}
     assert run_receipt["errors"] == [{"job": job_wire(ETH), "error": receipt["error"]}]
@@ -136,11 +136,7 @@ def test_expired_url_keeps_only_files_already_put(
         assert file["bytes"] == len(stored.body)
         assert file["sha256"] == hashlib.sha256(gzip.decompress(stored.body)).hexdigest()
     assert landed(landing, ETH) == sorted(ORDERS) and landed(landing, BTC) == sorted(NAMES)
-    assert [u["name"] for u in control.uploads if u["asset"] == ETH.asset] == [
-        "orders.raw",
-        "orders.mapped",
-        "fills.raw",
-    ]
+    assert [u for u in control.uploads if u["asset"] == ETH.asset] == [job_wire(ETH)]
     assert run_receipt["jobs"] == {"attempted": 2, "succeeded": 1, "failed": 1}
     assert run_receipt["errors"] == [{"job": job_wire(ETH), "error": receipt["error"]}]
     assert control.outstanding == [job_wire(ETH)] and control.completed == [job_wire(BTC)]

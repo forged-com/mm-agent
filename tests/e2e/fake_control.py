@@ -10,7 +10,7 @@ from tests.e2e.fake_landing import FakeLanding
 from tests.e2e.serving import Fake, Reply
 
 OBJECT_SUFFIX = ".jsonl.gz"
-NAME = "name"
+NAMES = ("orders.raw", "orders.mapped", "fills.raw", "fills.mapped")
 
 
 class FakeControlPlane(Fake):
@@ -31,10 +31,10 @@ class FakeControlPlane(Fake):
     def done(self, *jobs: Job) -> None:
         self.completed.extend(job_wire(job) for job in jobs)
 
-    def object_path(self, request: dict[str, Any]) -> str:
+    def object_path(self, request: dict[str, Any], name: str) -> str:
         target = f"{request['asset']}/{request['venue'] or 'all'}/{request['quote'] or 'all'}"
         window = f"{request['from']}-{request['to']}"
-        return f"{self.mm}/{target}/{window}/{request['name']}{OBJECT_SUFFIX}"
+        return f"{self.mm}/{target}/{window}/{name}{OBJECT_SUFFIX}"
 
     def respond(self, method: str, path: str, headers: dict[str, str], body: bytes) -> Reply:
         if headers.get("Authorization") != f"Bearer {self.token}":
@@ -56,12 +56,12 @@ class FakeControlPlane(Fake):
                 return 200, None
             case "GET", "/jobs":
                 return 200, {"jobs": list(self.outstanding)}
-            case "POST", "/upload_url":
-                check("upload_url", payload, "#/$defs/request")
-                if {k: v for k, v in payload.items() if k != NAME} in self.completed:
+            case "POST", "/upload_urls":
+                check("upload_urls", payload, "#/$defs/request")
+                if payload in self.completed:
                     return 409, {"error": "job already done"}
                 self.uploads.append(payload)
-                return 200, {"url": self.landing.sign(self.object_path(payload))}
+                return 200, {"urls": {name: self.landing.sign(self.object_path(payload, name)) for name in NAMES}}
             case "POST", "/receipt":
                 check("receipt", payload)
                 self.receipts.append(payload)

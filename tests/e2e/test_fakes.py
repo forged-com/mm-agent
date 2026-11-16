@@ -40,19 +40,17 @@ def test_jobs_lists_what_was_seeded(control: FakeControlPlane) -> None:
     assert client(control).jobs() == golden.jobs()
 
 
-def test_upload_url_signs_a_path_the_landing_accepts(
+def test_upload_urls_sign_paths_the_landing_accepts(
     control: FakeControlPlane, landing: FakeLanding, tmp_path: Path
 ) -> None:
     with Writer(tmp_path, "orders.mapped") as writer:
         writer.write({"id": "o1"})
     landed = writer.close()
-    url = client(control).upload_url(JOB, "orders.mapped")
+    url = client(control).upload_urls(JOB)["orders.mapped"]
     assert url.startswith(landing.url + "/")
     put(url, landed)
     key = f"golden/ETH/all/all/{golden.START}-{golden.END}/orders.mapped.jsonl.gz"
-    assert control.uploads == [
-        {"from": JOB.start, "to": JOB.end, "asset": "ETH", "venue": None, "quote": None, "name": "orders.mapped"}
-    ]
+    assert control.uploads == [{"from": JOB.start, "to": JOB.end, "asset": "ETH", "venue": None, "quote": None}]
     stored = landing.objects[key]
     assert stored.content_type == "application/gzip"
     assert hashlib.sha256(gzip.decompress(stored.body)).hexdigest() == landed.sha256

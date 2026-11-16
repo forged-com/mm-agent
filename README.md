@@ -9,9 +9,9 @@ It copies two tables out of your order management system, orders and fills, for 
 Every X minutes the agent:
 
 1. Checks in with Forgd's control plane: agent version, a hash of your config, the image digest if you passed one, and the time.
-2. Asks which jobs are outstanding. A job is one asset and one half-open time window `[from, to)` in UTC. Usually it asks for everything you hold for that asset, across every venue and pair. Forgd can narrow a job to one venue, one quote currency, or both.
+2. Asks which jobs are outstanding. A job is one asset and one half-open time window `[from, to)` in UTC: whole hours within one UTC day, so a backfill comes as one job per day and a caught-up agent gets one hour at a time. Usually it asks for everything you hold for that asset, across every venue and pair. Forgd can narrow a job to one venue, one quote currency, or both.
 3. For each job, resolves your aliases, runs your configured query or file glob with the window and asset bound, drops rows outside a narrowed job's venue or pair, and streams the rows into two gzipped JSONL files: the raw rows exactly as your source returned them, and the same rows mapped to Forgd's schema.
-4. Asks the control plane for a signed upload URL per file and PUTs the file there. One URL, one object, short lifetime, path chosen by Forgd.
+4. Asks the control plane once per job for a signed upload URL per file and PUTs each file to its URL. One URL, one object, short lifetime, path chosen by Forgd. The URLs are asked for after the query, so a long query can't outlive them.
 5. Sends a receipt per job and one per pass: row counts, byte sizes, content hashes, query time, and any error.
 
 Then it sleeps and goes again. The control plane decides the cadence, the lag, backfills and re-pulls. A failed job stays outstanding and is retried on the next pass. The agent keeps no state between passes, so you can restart it at any time.
@@ -133,7 +133,7 @@ The same order can legitimately appear in several windows. Forgd deduplicates do
 
 ### Files sources
 
-`source.dsn` is the root directory and each `query` is a glob relative to it. The placeholder `{asset}` expands to your alias string and `{from}` and `{to}` to dates formatted `YYYY-MM-DD` in `source.timezone`. Files ending in `.csv` or `.jsonl`, optionally `.gz`, are read in path order. CSV needs a header row and every value arrives as a string. A UTF-8 byte order mark is tolerated.
+`source.dsn` is the root directory and each `query` is a glob relative to it. The placeholder `{asset}` expands to your alias string and `{from}` and `{to}` to dates formatted `YYYY-MM-DD` in `source.timezone`. A window that spans more than one local date is globbed once per date, with `{from}` that date, so a UTC day in another timezone reads both dates' files. Files ending in `.csv` or `.jsonl`, optionally `.gz`, are read in path order. CSV needs a header row and every value arrives as a string. A UTF-8 byte order mark is tolerated.
 
 Unlike SQL, the files driver also filters by window: every row from every matched file is normalised and then kept only if it falls inside the window by the rules above and inside a narrowed job's venue and pair. Other rows are dropped and not counted.
 
@@ -164,7 +164,6 @@ Any coercion failure fails the whole job, naming the table, field and column, an
 
 - **Compact dates look like epochs.** A string such as `20261017` is read as epoch seconds, not as 17 October 2026, because the two cannot be told apart. Use `2026-10-17` or a full ISO timestamp.
 - **Local time around DST changes.** If your source stores naive local time, the repeated hour at the autumn change resolves to its first occurrence, and times inside the spring gap resolve with the offset in force before the change. Store UTC if you can. If you cannot, expect this and check the dry run around a change.
-- **File globs cover one local date.** A UTC day window in a non-UTC `source.timezone` spans two local dates, but a glob using `{from}` matches only one. Rows from the other date are silently dropped by the window filter. The dry run lists every matched path, so check it before going live, and prefer file layouts that do not partition by date, or set `source.timezone` to `UTC` for files that are already in UTC.
 
 ## Dry run
 

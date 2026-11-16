@@ -36,7 +36,7 @@
         },
         "files": {
           "type": "object",
-          "propertyNames": {"$ref": "upload_url.json#/$defs/request/properties/name"},
+          "propertyNames": {"$ref": "upload_urls.json#/$defs/name"},
           "additionalProperties": {"$ref": "#/$defs/file"}
         },
         "query_ms": {"$ref": "#/$defs/millis"},
