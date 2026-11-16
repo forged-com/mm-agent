@@ -1,5 +1,6 @@
 import pytest
 
+from mm_agent import __version__
 from mm_agent.control import ControlPlane
 from mm_agent.types import ControlError, Job
 from tests.conftest import StubControlPlane
@@ -28,6 +29,7 @@ def test_bearer_token_on_every_call(stub: StubControlPlane) -> None:
     cp.receipt({})
     assert [c.path for c in stub.calls] == ["/check_in", "/jobs", "/upload_urls", "/receipt"]
     assert all(c.headers["Authorization"] == "Bearer secret-token" for c in stub.calls)
+    assert all(c.headers["User-Agent"] == f"forgd-mm-agent/{__version__}" for c in stub.calls)
 
 
 def test_check_in_payload(stub: StubControlPlane) -> None:

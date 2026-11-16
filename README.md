@@ -20,6 +20,7 @@ Then it sleeps and goes again. The control plane decides the cadence, the lag, b
 
 - It opens no inbound port. All traffic is outbound: to the control plane URL in your config and to the signed upload URLs it hands back.
 - It holds no cloud credentials. The only secret in the container is `FORGD_AGENT_TOKEN`, which identifies you to the control plane. Revoking it cuts the agent off.
+- Every call to the control plane names the agent version. Forgd accepts a list of versions, and anything else gets HTTP 426 until you update.
 - It never sends your database credentials, your query text, or your config anywhere. The control plane sees a hash of the config, not the config.
 - It never writes to your source. Use a read-only database user or a read-only mount.
 - It never updates itself. The image you pulled is the image that runs, until you pull a new tag.

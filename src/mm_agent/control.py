@@ -2,6 +2,7 @@ from typing import Any
 
 import requests
 
+from mm_agent import __version__
 from mm_agent.constants import LANDING_NAMES, TIMEOUT_SECONDS
 from mm_agent.types import ControlError, Job
 from mm_agent.utils import now_millis
@@ -12,6 +13,7 @@ class ControlPlane:
         self.url = url
         self.session = requests.Session()
         self.session.headers["Authorization"] = f"Bearer {token}"
+        self.session.headers["User-Agent"] = f"forgd-mm-agent/{__version__}"
 
     def check_in(self, version: str, config_hash: str, image_digest: str | None) -> None:
         self._post(
