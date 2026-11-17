@@ -177,7 +177,14 @@ def summarise(
 
 
 def process(cfg: Config, control: ControlPlane, job: Job) -> str | None:
-    receipt = land(cfg, job, lambda file: put(control.upload_url(job, file.name), file))
+    urls: dict[str, str] = {}
+
+    def deliver(file: Landed) -> None:
+        if not urls:
+            urls.update(control.upload_urls(job))
+        put(urls[file.name], file)
+
+    receipt = land(cfg, job, deliver)
     if receipt.error:
         log.error("job %s [%d, %d): %s", job.label, job.start, job.end, receipt.error)
     else:

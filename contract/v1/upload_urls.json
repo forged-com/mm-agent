@@ -1,0 +1,32 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "POST /upload_urls",
+  "description": "Request and response for the signed single-object PUT URLs of one job, one per landing file. The object paths are chosen by the control plane.",
+  "$defs": {
+    "name": {"type": "string", "enum": ["orders.raw", "orders.mapped", "fills.raw", "fills.mapped"]},
+    "request": {
+      "type": "object",
+      "required": ["from", "to", "asset", "venue", "quote"],
+      "additionalProperties": false,
+      "properties": {
+        "from": {"$ref": "job.json#/properties/from"},
+        "to": {"$ref": "job.json#/properties/to"},
+        "asset": {"$ref": "job.json#/properties/asset"},
+        "venue": {"$ref": "job.json#/properties/venue"},
+        "quote": {"$ref": "job.json#/properties/quote"}
+      }
+    },
+    "response": {
+      "type": "object",
+      "required": ["urls"],
+      "properties": {
+        "urls": {
+          "type": "object",
+          "required": ["orders.raw", "orders.mapped", "fills.raw", "fills.mapped"],
+          "propertyNames": {"$ref": "#/$defs/name"},
+          "additionalProperties": {"type": "string", "format": "uri", "minLength": 1}
+        }
+      }
+    }
+  }
+}

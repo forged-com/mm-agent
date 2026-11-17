@@ -83,12 +83,16 @@ class Report:
 
     def _glob(self, cfg: Config, name: str, table: Table, job: Job, resolved: Resolved) -> None:
         try:
-            glob = files.pattern(cfg.source, table, job, resolved)
+            globs = list(
+                dict.fromkeys(
+                    files.pattern(cfg.source, table, part, resolved) for part in files.local_days(cfg.source, job)
+                )
+            )
             matched = files.files(cfg.source, table, job, resolved)
         except DriverError as e:
             self.line(f"  {name} files: {e}")
             return
-        self.line(f"  {name} glob {glob!r} matches {len(matched)} file(s)")
+        self.line(f"  {name} glob {', '.join(map(repr, globs))} matches {len(matched)} file(s)")
         for path in matched:
             self.line(f"    {path}")
 

@@ -6,7 +6,7 @@ from jsonschema import Draft202012Validator
 from referencing import Registry, Resource
 
 CONTRACT = Path(__file__).resolve().parents[1] / "contract" / "v1"
-NAMES = ["check_in", "jobs", "upload_url", "receipt", "job", "order", "fill"]
+NAMES = ["check_in", "jobs", "upload_urls", "receipt", "job", "order", "fill"]
 
 
 def _load(name: str) -> dict[str, Any]:

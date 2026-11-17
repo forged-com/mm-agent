@@ -11,7 +11,7 @@ import pytest
 from mm_agent import __version__
 from mm_agent.__main__ import fetch, land, load, main, process, run
 from mm_agent.config import parse
-from mm_agent.constants import TICK_SECONDS, TOKEN_ENV
+from mm_agent.constants import LANDING_NAMES, TICK_SECONDS, TOKEN_ENV
 from mm_agent.control import ControlPlane, job_wire
 from mm_agent.landing import Landed
 from mm_agent.normalise import resolve
@@ -97,7 +97,7 @@ def cfg(stub: StubControlPlane, tmp_path: Path) -> Config:
 @pytest.fixture
 def control(stub: StubControlPlane) -> ControlPlane:
     stub.respond("/jobs", 200, {"jobs": [job_wire(JOB)]})
-    stub.respond("/upload_url", 200, {"url": stub.url + "/put"})
+    stub.respond("/upload_urls", 200, {"urls": dict.fromkeys(LANDING_NAMES, stub.url + "/put")})
     return ControlPlane(stub.url, "tok")
 
 
@@ -114,13 +114,10 @@ def test_run_happy_path(stub: StubControlPlane, cfg: Config, control: ControlPla
     assert paths(stub) == [
         "POST /check_in",
         "GET /jobs",
-        "POST /upload_url",
+        "POST /upload_urls",
         "PUT /put",
-        "POST /upload_url",
         "PUT /put",
-        "POST /upload_url",
         "PUT /put",
-        "POST /upload_url",
         "PUT /put",
         "POST /receipt",
         "POST /receipt",
@@ -128,8 +125,7 @@ def test_run_happy_path(stub: StubControlPlane, cfg: Config, control: ControlPla
     assert stub.calls[0].body["version"] == __version__
     assert stub.calls[0].body["config_hash"] == "abc"
     assert stub.calls[0].body["image_digest"] == "sha256:img"
-    names = [c.body["name"] for c in stub.calls if c.path == "/upload_url"]
-    assert names == ["orders.raw", "orders.mapped", "fills.raw", "fills.mapped"]
+    assert [c.body for c in stub.calls if c.path == "/upload_urls"] == [job_wire(JOB)]
     job, final = (c.body for c in receipts(stub))
     assert job["kind"] == "job"
     assert job["status"] == "ok"
@@ -207,7 +203,7 @@ def test_normalise_error_fails_job_with_no_files(
     bad = [*ORDERS, ("o3", "hold", "1", 1, "2026-10-17 12:00:00", None)]
     cfg = parse(YAML.format(url=stub.url, db=database(tmp_path / "oms.db", bad)))
     run(cfg, control, "abc", None)
-    assert "POST /upload_url" not in paths(stub)
+    assert "POST /upload_urls" not in paths(stub)
     job = receipts(stub)[0].body
     assert job["status"] == "failed"
     assert job["error"] == "orders.side (side): unknown side 'hold'"
@@ -223,15 +219,15 @@ def test_driver_error_fails_job(stub: StubControlPlane, cfg: Config, control: Co
     job = receipts(stub)[0].body
     assert job["status"] == "failed"
     assert job["error"].startswith("sqlite query failed")
-    assert "POST /upload_url" not in paths(stub)
+    assert "POST /upload_urls" not in paths(stub)
 
 
-def test_upload_url_failure_fails_job(stub: StubControlPlane, cfg: Config, control: ControlPlane) -> None:
-    stub.respond("/upload_url", 403, raw=b"refused")
+def test_upload_urls_failure_fails_job(stub: StubControlPlane, cfg: Config, control: ControlPlane) -> None:
+    stub.respond("/upload_urls", 403, raw=b"refused")
     run(cfg, control, "abc", None)
     job = receipts(stub)[0].body
     assert job["status"] == "failed"
-    assert job["error"] == "POST /upload_url: HTTP 403: refused"
+    assert job["error"] == "POST /upload_urls: HTTP 403: refused"
     assert job["files"] == {}
 
 

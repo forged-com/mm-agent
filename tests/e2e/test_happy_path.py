@@ -55,7 +55,7 @@ def test_one_tick_lands_every_golden_job(
     )
     assert receipt.started <= check_in["now"] <= receipt.ended
 
-    assert control.uploads == [{**job_wire(job), "name": name} for job in jobs for name in NAMES]
+    assert control.uploads == [job_wire(job) for job in jobs]
     assert sorted(landing.objects) == sorted(object_key(job, name) for job in jobs for name in NAMES)
 
     expected = golden.expected()["files"]

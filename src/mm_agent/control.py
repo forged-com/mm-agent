@@ -2,7 +2,8 @@ from typing import Any
 
 import requests
 
-from mm_agent.constants import TIMEOUT_SECONDS
+from mm_agent import __version__
+from mm_agent.constants import LANDING_NAMES, TIMEOUT_SECONDS
 from mm_agent.types import ControlError, Job
 from mm_agent.utils import now_millis
 
@@ -12,6 +13,7 @@ class ControlPlane:
         self.url = url
         self.session = requests.Session()
         self.session.headers["Authorization"] = f"Bearer {token}"
+        self.session.headers["User-Agent"] = f"forgd-mm-agent/{__version__}"
 
     def check_in(self, version: str, config_hash: str, image_digest: str | None) -> None:
         self._post(
@@ -31,12 +33,14 @@ class ControlPlane:
             raise ControlError(f"jobs: expected a list under 'jobs', got {type(items).__name__}")
         return [_job(item) for item in items]
 
-    def upload_url(self, job: Job, name: str) -> str:
-        body = self._post("/upload_url", {**job_wire(job), "name": name})
-        url = body.get("url")
-        if not isinstance(url, str) or not url:
-            raise ControlError("upload_url: response has no 'url'")
-        return url
+    def upload_urls(self, job: Job) -> dict[str, str]:
+        body = self._post("/upload_urls", job_wire(job))
+        urls = body.get("urls")
+        if not isinstance(urls, dict) or not all(
+            isinstance(urls.get(name), str) and urls[name] for name in LANDING_NAMES
+        ):
+            raise ControlError(f"upload_urls: response needs a url for each of {sorted(LANDING_NAMES)}")
+        return urls
 
     def receipt(self, payload: dict[str, Any]) -> None:
         self._post("/receipt", payload)

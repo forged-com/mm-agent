@@ -1,10 +1,17 @@
 import pytest
 
+from mm_agent import __version__
 from mm_agent.control import ControlPlane
 from mm_agent.types import ControlError, Job
 from tests.conftest import StubControlPlane
 
 JOB = Job(start=1_760_702_400_000, end=1_760_706_000_000, asset="ETH", venue="binance")
+URLS = {
+    "urls": {
+        name: "https://put.example/" + name
+        for name in ("orders.raw", "orders.mapped", "fills.raw", "fills.mapped")
+    }
+}
 JOB_WIRE = {"from": JOB.start, "to": JOB.end, "asset": "ETH", "venue": "binance", "quote": None}
 
 
@@ -14,14 +21,15 @@ def client(stub: StubControlPlane) -> ControlPlane:
 
 def test_bearer_token_on_every_call(stub: StubControlPlane) -> None:
     stub.respond("/jobs", 200, {"jobs": []})
-    stub.respond("/upload_url", 200, {"url": "https://put.example/x"})
+    stub.respond("/upload_urls", 200, URLS)
     cp = client(stub)
     cp.check_in("0.1.0", "hash", None)
     cp.jobs()
-    cp.upload_url(JOB, "orders.raw")
+    cp.upload_urls(JOB)
     cp.receipt({})
-    assert [c.path for c in stub.calls] == ["/check_in", "/jobs", "/upload_url", "/receipt"]
+    assert [c.path for c in stub.calls] == ["/check_in", "/jobs", "/upload_urls", "/receipt"]
     assert all(c.headers["Authorization"] == "Bearer secret-token" for c in stub.calls)
+    assert all(c.headers["User-Agent"] == f"forgd-mm-agent/{__version__}" for c in stub.calls)
 
 
 def test_check_in_payload(stub: StubControlPlane) -> None:
@@ -84,18 +92,25 @@ def test_jobs_rejects_bad_shape(stub: StubControlPlane, body: object, message: s
         client(stub).jobs()
 
 
-def test_upload_url_request_and_response(stub: StubControlPlane) -> None:
-    stub.respond("/upload_url", 200, {"url": "https://put.example/signed?x=1"})
-    url = client(stub).upload_url(JOB, "fills.mapped")
-    assert url == "https://put.example/signed?x=1"
-    assert stub.calls[0].body == {**JOB_WIRE, "name": "fills.mapped"}
+def test_upload_urls_request_and_response(stub: StubControlPlane) -> None:
+    stub.respond("/upload_urls", 200, URLS)
+    assert client(stub).upload_urls(JOB) == URLS["urls"]
+    assert stub.calls[0].body == JOB_WIRE
 
 
-@pytest.mark.parametrize("body", [{}, {"url": ""}, {"url": 5}])
-def test_upload_url_requires_url(stub: StubControlPlane, body: object) -> None:
-    stub.respond("/upload_url", 200, body)
-    with pytest.raises(ControlError, match="response has no 'url'"):
-        client(stub).upload_url(JOB, "orders.raw")
+@pytest.mark.parametrize(
+    "body",
+    [
+        {},
+        {"urls": []},
+        {"urls": {"orders.raw": "https://put.example/x"}},
+        {"urls": {**URLS["urls"], "fills.raw": ""}},
+    ],
+)
+def test_upload_urls_requires_a_url_per_file(stub: StubControlPlane, body: object) -> None:
+    stub.respond("/upload_urls", 200, body)
+    with pytest.raises(ControlError, match="response needs a url for each of"):
+        client(stub).upload_urls(JOB)
 
 
 def test_receipt_posts_payload_verbatim(stub: StubControlPlane) -> None:

@@ -104,15 +104,22 @@ def test_jobs_response_round_trips(stub: StubControlPlane) -> None:
     rejects("jobs", {})
 
 
-def test_upload_url_request_and_response(stub: StubControlPlane) -> None:
-    response = {"url": "https://put.example/signed?x=1"}
-    stub.respond("/upload_url", 200, response)
-    ControlPlane(stub.url, "t").upload_url(JOB, "fills.mapped")
-    check("upload_url", stub.calls[0].body, "#/$defs/request")
-    check("upload_url", response, "#/$defs/response")
-    rejects("upload_url", {**job_wire(JOB), "name": "orders.jsonl"}, "#/$defs/request")
-    rejects("upload_url", {"url": ""}, "#/$defs/response")
-    rejects("upload_url", {}, "#/$defs/response")
+def test_upload_urls_request_and_response(stub: StubControlPlane) -> None:
+    response = {
+        "urls": {
+            name: "https://put.example/" + name
+            for name in ("orders.raw", "orders.mapped", "fills.raw", "fills.mapped")
+        }
+    }
+    stub.respond("/upload_urls", 200, response)
+    ControlPlane(stub.url, "t").upload_urls(JOB)
+    check("upload_urls", stub.calls[0].body, "#/$defs/request")
+    check("upload_urls", response, "#/$defs/response")
+    rejects("upload_urls", {**job_wire(JOB), "name": "orders.raw"}, "#/$defs/request")
+    rejects("upload_urls", {"urls": {**response["urls"], "orders.raw": ""}}, "#/$defs/response")
+    rejects("upload_urls", {"urls": {"orders.raw": "https://put.example/x"}}, "#/$defs/response")
+    rejects("upload_urls", {"urls": {**response["urls"], "evil": "https://put.example/x"}}, "#/$defs/response")
+    rejects("upload_urls", {}, "#/$defs/response")
 
 
 def test_job_receipt_ok() -> None:

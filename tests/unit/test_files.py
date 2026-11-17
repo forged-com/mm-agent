@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 
-from mm_agent.drivers.files import files, pattern, rows
+from mm_agent.drivers.files import files, local_days, pattern, rows
 from mm_agent.types import DriverError, Job, Resolved, Source, SourceKind, Table
 
 NOON = 1_792_238_400_000
@@ -197,3 +197,26 @@ def test_pattern_hour_window_keeps_from_and_to_on_the_same_day(root: Path) -> No
 
 def test_recursive_glob_crosses_venues(root: Path) -> None:
     assert [row["order_id"] for row in read(root, "orders/**/*.csv")] == ["1", "2", "9"]
+
+
+def test_utc_day_reads_both_local_dates_it_spans(tmp_path: Path) -> None:
+    for day in ("2026-10-16", "2026-10-17", "2026-10-18"):
+        write(tmp_path / f"{day}.csv", CSV)
+    day = Job(start=NOON - 12 * HOUR, end=NOON + 12 * HOUR, asset=JOB.asset)
+    found = files(source(tmp_path, "America/New_York"), table("{from}.csv"), day, RESOLVED)
+    assert [path.name for path in found] == ["2026-10-16.csv", "2026-10-17.csv"]
+    assert [path.name for path in files(source(tmp_path), table("{from}.csv"), day, RESOLVED)] == [
+        "2026-10-17.csv"
+    ]
+
+
+def test_local_days_cut_at_local_midnight(root: Path) -> None:
+    day = Job(start=NOON - 12 * HOUR, end=NOON + 12 * HOUR, asset=JOB.asset)
+    assert local_days(source(root), day) == [day]
+    first, second = local_days(source(root, "America/New_York"), day)
+    assert (first.start, first.end, second.start, second.end) == (
+        day.start,
+        NOON - 8 * HOUR,
+        NOON - 8 * HOUR,
+        day.end,
+    )
